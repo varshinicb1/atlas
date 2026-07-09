@@ -44,6 +44,7 @@ jobs:
       - run: cargo build --release
       - name: Validate all compiled bundles
         run: |
+          shopt -s nullglob
           for bundle in target/*.atlas; do
             name=$(basename "$bundle" .atlas)
             echo "=== Validating $name ==="
