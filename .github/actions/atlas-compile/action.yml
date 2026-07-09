@@ -1,0 +1,61 @@
+name: "Atlas Compile"
+description: "Compile markdown knowledge sources into a .atlas binary bundle"
+author: "Atlas Knowledge"
+branding:
+  icon: "book-open"
+  color: "blue"
+
+inputs:
+  sources:
+    description: "Space-separated list of .md and .yaml source files"
+    required: true
+  out:
+    description: "Output .atlas file path"
+    required: false
+    default: "bundle.atlas"
+  install-cli:
+    description: "Auto-install the atlas CLI if not present"
+    required: false
+    default: "true"
+
+outputs:
+  nodes:
+    description: "Number of nodes in the compiled bundle"
+  edges:
+    description: "Number of edges in the compiled bundle"
+  decision_trees:
+    description: "Number of decision trees in the compiled bundle"
+  output-path:
+    description: "Path to the compiled .atlas file"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Install atlas CLI
+      if: inputs.install-cli == 'true'
+      shell: bash
+      run: |
+        if ! command -v atlas &> /dev/null; then
+          echo "Installing atlas CLI..."
+          ARCH=$(uname -m)
+          OS=$(uname -s | tr '[:upper:]' '[:lower:]')
+          URL="https://github.com/anomalyco/atlas/releases/latest/download/atlas-${OS}-${ARCH}.tar.gz"
+          curl -sL "$URL" -o /tmp/atlas.tar.gz
+          tar -xzf /tmp/atlas.tar.gz -C /usr/local/bin
+          echo "atlas CLI installed"
+        fi
+
+    - name: Compile knowledge sources
+      shell: bash
+      run: |
+        atlas compile ${{ inputs.sources }} --out ${{ inputs.out }} --json > /tmp/atlas-result.json
+        echo "nodes=$(cat /tmp/atlas-result.json | jq -r '.nodes')" >> $GITHUB_OUTPUT
+        echo "edges=$(cat /tmp/atlas-result.json | jq -r '.edges')" >> $GITHUB_OUTPUT
+        echo "decision_trees=$(cat /tmp/atlas-result.json | jq -r '.decision_trees')" >> $GITHUB_OUTPUT
+        echo "output-path=${{ inputs.out }}" >> $GITHUB_OUTPUT
+
+    - name: Upload compiled bundle
+      uses: actions/upload-artifact@v4
+      with:
+        name: atlas-bundle
+        path: ${{ inputs.out }}

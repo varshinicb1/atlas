@@ -1,0 +1,20 @@
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  font-family: system-ui, -apple-system, sans-serif;
+  color: #0f172a;
+  background: #ffffff;
+}
+
+input:focus {
+  outline: 2px solid #6366f1;
+  outline-offset: -1px;
+}
+
+input::placeholder {
+  color: #94a3b8;
+}

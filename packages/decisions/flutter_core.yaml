@@ -1,0 +1,122 @@
+id: flutter_widget_choice
+trigger:
+  intent: choose_solution
+  domain: mobile
+  tags: [flutter, widget, ui]
+root: widget_state_node
+nodes:
+  - id: widget_state_node
+    question: "Does the widget need to manage mutable state that changes over time?"
+    node_type: boolean
+    branches:
+      - condition: "answer=true"
+        next: stateful_vs_builder
+      - condition: "answer=false"
+        next: stateless_vs_consumer
+  - id: stateless_vs_consumer
+    question: "Does the widget need to react to data changes from an InheritedWidget or provider?"
+    node_type: boolean
+    branches:
+      - condition: "answer=true"
+        next: stateless_consumer_terminal
+      - condition: "answer=false"
+        next: stateless_simple_terminal
+  - id: stateful_vs_builder
+    question: "Will the widget build different UI based on external data that cannot be passed via constructor?"
+    node_type: boolean
+    branches:
+      - condition: "answer=true"
+        next: stateful_builder_approach
+      - condition: "answer=false"
+        next: stateful_simple_terminal
+  - id: stateless_consumer_terminal
+    terminal:
+      recommendation:
+        - node_id: "concept:stateless_widget"
+          confidence: 0.8
+        - node_id: "concept:inherited_widget"
+          confidence: 0.7
+      rationale: "Use StatelessWidget with a builder pattern (e.g., Consumer, context.select) to react to data changes without mutable state."
+  - id: stateless_simple_terminal
+    terminal:
+      recommendation:
+        - node_id: "concept:stateless_widget"
+          confidence: 0.95
+      rationale: "StatelessWidget is the ideal choice. All configuration is fixed via constructor arguments."
+  - id: stateful_builder_approach
+    question: "Does the mutable state come from the widget's own lifecycle or from external sources?"
+    node_type: boolean
+    branches:
+      - condition: "answer=external"
+        next: stateful_builder_terminal
+      - condition: "answer=internal"
+        next: stateful_simple_terminal
+  - id: stateful_builder_terminal
+    terminal:
+      recommendation:
+        - node_id: "concept:stateful_widget"
+          confidence: 0.85
+      rationale: "Use StatefulWidget with a builder pattern (e.g., ValueListenableBuilder, StreamBuilder) to efficiently rebuild only the necessary subtree when external data changes."
+  - id: stateful_simple_terminal
+    terminal:
+      recommendation:
+        - node_id: "concept:stateful_widget"
+          confidence: 0.9
+      rationale: "Use StatefulWidget to hold and manage mutable state internally via setState."
+
+---
+id: flutter_state_management
+trigger:
+  intent: choose_solution
+  domain: mobile
+  tags: [flutter, state, architecture]
+root: local_vs_shared_node
+nodes:
+  - id: local_vs_shared_node
+    question: "Is the state local to a single widget subtree or shared across multiple unrelated parts of the app?"
+    node_type: boolean
+    branches:
+      - condition: "answer=local"
+        next: simple_vs_complex_node
+      - condition: "answer=shared"
+        next: shared_complexity_node
+  - id: simple_vs_complex_node
+    question: "Does the local state have complex validation logic or multiple interdependent fields?"
+    node_type: boolean
+    branches:
+      - condition: "answer=true"
+        next: local_complex_terminal
+      - condition: "answer=false"
+        next: local_simple_terminal
+  - id: shared_complexity_node
+    question: "Does the shared state need to be persisted, have undo/redo, or be inspected by developer tools?"
+    node_type: boolean
+    branches:
+      - condition: "answer=true"
+        next: bloc_riverpod_terminal
+      - condition: "answer=false"
+        next: inherited_provider_terminal
+  - id: local_simple_terminal
+    terminal:
+      recommendation:
+        - node_id: "concept:stateful_widget"
+          confidence: 0.95
+      rationale: "Simple local state is best managed with setState inside a StatefulWidget. Avoid over-engineering with external state libraries for isolated concerns."
+  - id: local_complex_terminal
+    terminal:
+      recommendation:
+        - node_id: "api:set_state"
+          confidence: 0.7
+      rationale: "Use StatefulWidget with extracted state management patterns (ValueNotifier, ChangeNotifier) to keep complex local logic testable and organized."
+  - id: inherited_provider_terminal
+    terminal:
+      recommendation:
+        - node_id: "concept:inherited_widget"
+          confidence: 0.85
+      rationale: "Shared state that is read-only or updated infrequently fits well with InheritedWidget or Provider. Simple, native, and predictable."
+  - id: bloc_riverpod_terminal
+    terminal:
+      recommendation:
+        - node_id: "concept:inherited_widget"
+          confidence: 0.7
+      rationale: "Complex shared state benefits from a dedicated solution like Riverpod or BLoC. These provide hot-reload, dev tools integration, and structured lifecycle management."

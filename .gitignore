@@ -1,0 +1,36 @@
+# Rust
+/target
+**/target
+Cargo.lock.bak
+
+# Node
+node_modules/
+**/node_modules/
+
+# VS Code extension
+.vscode/
+*.vsix
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Atlas build artifacts
+*.atlas
+*.ir.json
+
+# Environment / secrets
+.env
+.env.local
+.dev.vars
+wrangler.toml.bak
+
+# IDE
+.idea/
+*.swp
+*.swo
+
+# Logs
+*.log
+.wrangler/

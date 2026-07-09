@@ -1,0 +1,24 @@
+[package]
+name = "atlas-cli"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "atlas"
+path = "src/main.rs"
+
+[dependencies]
+atlas-ir.workspace = true
+atlas-compiler.workspace = true
+atlas-runtime.workspace = true
+clap.workspace = true
+anyhow.workspace = true
+serde_json.workspace = true
+serde.workspace = true
+dirs.workspace = true
+ureq = { version = "3", features = ["json"] }
+env_logger.workspace = true
+
+[features]
+default = ["ollama"]
+ollama = ["atlas-runtime/ollama"]

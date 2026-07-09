@@ -1,0 +1,117 @@
+id: offline_sync_flutter
+trigger:
+  intent: choose_solution
+  domain: mobile
+  tags: [offline, sync, flutter]
+root: q1
+nodes:
+  - id: q1
+    question: "Need bidirectional sync with a server?"
+    node_type: boolean
+    branches:
+      - condition: "sync=true"
+        next: q2
+      - condition: "sync=false"
+        next: q3
+  - id: q2
+    question: "Need conflict resolution?"
+    node_type: boolean
+    branches:
+      - condition: "conflict=true"
+        next: t1
+      - condition: "conflict=false"
+        next: t2
+  - id: q3
+    question: "Local only?"
+    node_type: boolean
+    branches:
+      - condition: "local=true"
+        next: t3
+  - id: t1
+    terminal:
+      recommendation:
+        - node_id: "package:pub.dev/supabase_flutter"
+          confidence: 0.85
+      rationale: >
+        Supabase provides realtime sync with PostgreSQL-level conflict
+        handling and offline support via the Supabase Flutter client.
+      agent_instructions: >
+        Use supabase_flutter RealtimeClient for bidirectional sync.
+        Call .subscribe() on the channel with an onError handler.
+  - id: t2
+    terminal:
+      recommendation:
+        - node_id: "package:pub.dev/riverpod"
+          confidence: 0.75
+        - node_id: "package:pub.dev/hive"
+          confidence: 0.70
+      rationale: >
+        Use Riverpod for state + Hive for local persistence. The sync
+        layer can be a lightweight ChangeNotifier that bridges both.
+      agent_instructions: >
+        Create a Riverpod Notifier that reads/writes to Hive boxes.
+        For optional sync, add a background isolate that pushes
+        changes when connectivity returns.
+  - id: t3
+    terminal:
+      recommendation:
+        - node_id: "package:pub.dev/hive"
+          confidence: 0.90
+      rationale: >
+        Hive is the simplest local-only solution. No sync, no
+        network dependencies. Use Isar for relational queries.
+      agent_instructions: >
+        Initialize Hive in main(), open a Box, and use Riverpod
+        Notifier to expose Hive data to the widget tree.
+---
+id: state_mgmt_flutter
+trigger:
+  intent: choose_solution
+  domain: mobile
+  tags: [state, flutter]
+root: sm1
+nodes:
+  - id: sm1
+    question: "Project complexity?"
+    node_type: categorical
+    branches:
+      - condition: "complexity=simple"
+        next: sm_t1
+      - condition: "complexity=medium"
+        next: sm_q2
+      - condition: "complexity=complex"
+        next: sm_t3
+  - id: sm_q2
+    question: "Need async state?"
+    node_type: boolean
+    branches:
+      - condition: "async=true"
+        next: sm_t2a
+      - condition: "async=false"
+        next: sm_t2b
+  - id: sm_t1
+    terminal:
+      recommendation:
+        - node_id: "package:pub.dev/provider"
+          confidence: 0.85
+      rationale: "Provider is the simplest solution for small apps."
+  - id: sm_t2a
+    terminal:
+      recommendation:
+        - node_id: "package:pub.dev/riverpod"
+          confidence: 0.90
+      rationale: "Riverpod's AsyncNotifier handles async state out of the box."
+  - id: sm_t2b
+    terminal:
+      recommendation:
+        - node_id: "package:pub.dev/riverpod"
+          confidence: 0.80
+      rationale: "Riverpod is testable and compile-time safe for medium apps."
+  - id: sm_t3
+    terminal:
+      recommendation:
+        - node_id: "package:pub.dev/bloc"
+          confidence: 0.75
+        - node_id: "package:pub.dev/riverpod"
+          confidence: 0.70
+      rationale: "BLoC scales best for complex apps with many event types."

@@ -1,0 +1,17 @@
+{
+  "name": "atlas-hub-registry",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-07-09",
+  "compatibility_flags": ["nodejs_compat"],
+  "kv_namespaces": [
+    { "binding": "PACKAGES", "id": "38e67b68af0d47dd9cd276111dbde5cf" }
+  ],
+  "durable_objects": {
+    "bindings": [
+      { "name": "RegistryAgent", "class_name": "RegistryAgent" }
+    ]
+  },
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["RegistryAgent"] }
+  ]
+}

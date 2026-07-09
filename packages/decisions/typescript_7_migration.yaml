@@ -1,0 +1,290 @@
+id: ts7_migration_path
+trigger:
+  intent: choose_solution
+  domain: typescript
+  tags: [typescript, migration, ts7, corsa]
+root: current_ts_version
+nodes:
+  - id: current_ts_version
+    question: "What TypeScript version are you currently using?"
+    node_type: categorical
+    branches:
+      - condition: "version=4.x"
+        next: major_upgrade
+      - condition: "version=5.x"
+        next: assess_impact
+      - condition: "version=6.x"
+        next: assess_impact
+      - condition: "version=7.x"
+        next: optimize_perf
+  - id: major_upgrade
+    question: "You are multiple major versions behind. Do you have a dedicated migration budget?"
+    node_type: boolean
+    branches:
+      - condition: "answer=true"
+        next: phased_migration_terminal
+      - condition: "answer=false"
+        next: stay_put_terminal
+  - id: assess_impact
+    question: "Is strict mode already enabled in your tsconfig.json?"
+    node_type: boolean
+    branches:
+      - condition: "answer=true"
+        next: module_resolution_check
+      - condition: "answer=false"
+        next: strict_mode_enable_terminal
+  - id: optimize_perf
+    question: "Have you configured --checkers and --builders flags?"
+    node_type: boolean
+    branches:
+      - condition: "answer=true"
+        next: fine_tune_terminal
+      - condition: "answer=false"
+        next: enable_parallel_terminal
+  - id: module_resolution_check
+    question: "Does your projects tsconfig use moduleResolution: node?"
+    node_type: boolean
+    branches:
+      - condition: "answer=true"
+        next: module_res_fix_terminal
+      - condition: "answer=false"
+        next: target_check
+  - id: target_check
+    question: "Does your project target ES5 or ES3?"
+    node_type: boolean
+    branches:
+      - condition: "answer=true"
+        next: target_fix_terminal
+      - condition: "answer=false"
+        next: esm_check
+  - id: esm_check
+    question: "Is your project using ES modules (type: module in package.json) or CommonJS?"
+    node_type: boolean
+    branches:
+      - condition: "answer=esm"
+        next: esm_ready_terminal
+      - condition: "answer=cjs"
+        next: cjs_ready_terminal
+  - id: phased_migration_terminal
+    terminal:
+      recommendation:
+        - node_id: "workflow:ts7/assess"
+          confidence: 0.90
+      rationale: "Teams 3+ major versions behind should plan a phased upgrade: TS 4 → 5 first, fix breaking changes, then TS 5 → 6, then TS 6 → 7. Each step takes 1-2 days per 50K lines. Budget at least 2 weeks."
+      agent_instructions: >
+        Run npx typescript@6 init first, fix all errors, then run npx typescript@7 init.
+        Do not skip intermediate versions.
+  - id: stay_put_terminal
+    terminal:
+      recommendation:
+        - node_id: "concept:ts7/corsa"
+          confidence: 0.50
+      rationale: "Without migration budget, stay on your current TypeScript version. Set aside time next quarter. The performance gains (10x) are worth planning for but not worth an unplanned migration."
+  - id: strict_mode_enable_terminal
+    terminal:
+      recommendation:
+        - node_id: "workflow:ts7/strict_fixes"
+          confidence: 0.95
+        - node_id: "concept:ts7/strict_default"
+          confidence: 0.90
+      rationale: "Strict mode is now the default. Estimate 1 hour per 10K lines to fix noImplicitAny and strictNullChecks errors. Use gradual approach: add strict: true with individual overrides set to false, then remove overrides one by one."
+      agent_instructions: >
+        Run tsc --noEmit --strict to get a baseline error count.
+        Fix noImplicitAny first, then strictNullChecks, then the rest.
+        Use // @ts-expect-error sparingly — only for third-party type gaps.
+  - id: module_res_fix_terminal
+    terminal:
+      recommendation:
+        - node_id: "workflow:ts7/config"
+          confidence: 0.95
+        - node_id: "concept:ts7/module_resolution"
+          confidence: 0.90
+      rationale: "Change moduleResolution to node16. This requires ESM-style imports (file extensions in relative imports) or setting module: nodenext. For bundler-based projects, use bundler instead — it is more forgiving of extensionless imports."
+      agent_instructions: >
+        If using Vite, esbuild, or Webpack: set moduleResolution to bundler.
+        If using pure Node.js: set moduleResolution to node16 and module to nodenext.
+        Add .js extensions to all relative imports: import { foo } from ./bar.js.
+  - id: target_fix_terminal
+    terminal:
+      recommendation:
+        - node_id: "concept:ts7/es5_removal"
+          confidence: 0.95
+      rationale: "Change target to es2022. If you need legacy browser support, add Babel or esbuild as a downlevel transpilation step. TS 7 will emit modern JS; your bundler/transpiler converts for older browsers."
+      agent_instructions: >
+        Set compilerOptions.target to es2022 in tsconfig.json.
+        If you support IE11 or older browsers: add a build step with Babel (@babel/preset-env) or esbuild --target=es5.
+  - id: esm_ready_terminal
+    terminal:
+      recommendation:
+        - node_id: "concept:ts7/corsa"
+          confidence: 0.95
+        - node_id: "api:ts7/checkers"
+          confidence: 0.90
+      rationale: "Your project is ESM-native and already has modern settings. Upgrade to TS 7 directly. Add --checkers 4 to your build scripts immediately to get the 10x speedup. Measure before-and-after timestamps."
+      agent_instructions: >
+        npm install typescript@7 --save-dev
+        npx typescript@7 init --accept-all
+        Add to package.json scripts: "typecheck": "tsc --noEmit --checkers 4"
+  - id: cjs_ready_terminal
+    terminal:
+      recommendation:
+        - node_id: "concept:ts7/corsa"
+          confidence: 0.90
+        - node_id: "concept:ts7/module_resolution"
+          confidence: 0.85
+      rationale: "Upgrade to TS 7 and add checkers flags. If using CommonJS, set module: commonjs and moduleResolution: node16 (not node). Test thoroughly as TS 7s Go checker may surface type errors in CJS interop patterns."
+      agent_instructions: >
+        npm install typescript@7 --save-dev
+        Set moduleResolution to node16 even for CommonJS projects.
+        Check for @types/node version compatibility upgrade to @types/node@22+.
+  - id: fine_tune_terminal
+    terminal:
+      recommendation:
+        - node_id: "concept:ts7/parallel_checking"
+          confidence: 0.80
+      rationale: "Already on TS 7 with parallel flags. Tune --checkers to CORES-1 and --builders to CORES/2 for optimal CI throughput. For local dev, set both to 0 (auto-detect). Consider using --watch with --checkers for real-time feedback."
+  - id: enable_parallel_terminal
+    terminal:
+      recommendation:
+        - node_id: "api:ts7/checkers"
+          confidence: 0.95
+        - node_id: "api:ts7/builders"
+          confidence: 0.85
+      rationale: "Add --checkers 4 and --builders 4 (or CORES-1) to build scripts. This is the single biggest performance lever in TS 7. A 4-core machine will see ~3x faster type checking compared to single-threaded mode."
+
+---
+id: ts7_strict_fix_strategy
+trigger:
+  intent: choose_solution
+  domain: typescript
+  tags: [typescript, strict, migration, fixing]
+root: error_type
+nodes:
+  - id: error_type
+    question: "What kind of strict mode error are you seeing?"
+    node_type: categorical
+    branches:
+      - condition: "error=implicit_any"
+        next: fix_implicit_any
+      - condition: "error=null_check"
+        next: fix_null_check
+      - condition: "error=function_types"
+        next: fix_function_types
+      - condition: "error=property_init"
+        next: fix_property_init
+      - condition: "error=unknown"
+        next: general_approach
+  - id: fix_implicit_any
+    question: "Is the implicit any error on a function parameter or a variable declaration?"
+    node_type: boolean
+    branches:
+      - condition: "answer=parameter"
+        next: param_any_terminal
+      - condition: "answer=variable"
+        next: variable_any_terminal
+  - id: fix_null_check
+    question: "Is the nullable value from an external API/call or from internal logic?"
+    node_type: boolean
+    branches:
+      - condition: "answer=external"
+        next: external_null_terminal
+      - condition: "answer=internal"
+        next: internal_null_terminal
+  - id: fix_function_types
+    question: "Are you passing a callback with more specific parameter types than expected?"
+    node_type: boolean
+    branches:
+      - condition: "answer=true"
+        next: bivariant_hack_terminal
+      - condition: "answer=false"
+        next: annotate_callback_terminal
+  - id: fix_property_init
+    question: "Does the property get assigned in the constructor or via dependency injection?"
+    node_type: boolean
+    branches:
+      - condition: "answer=constructor"
+        next: assign_in_constructor_terminal
+      - condition: "answer=di"
+        next: definite_assignment_terminal
+  - id: param_any_terminal
+    terminal:
+      recommendation:
+        - node_id: "failure:ts7/implicit_any_new"
+          confidence: 0.95
+      rationale: "Add explicit type annotation to the function parameter. If the type is truly unknown, use unknown instead of any. Then narrow with type guards at the usage site."
+      agent_instructions: >
+        function processData(data: unknown) { // was: data
+          if (typeof data === string) { ... }
+        }
+        Avoid using any unless absolutely necessary for migration velocity.
+  - id: variable_any_terminal
+    terminal:
+      recommendation:
+        - node_id: "failure:ts7/implicit_any_new"
+          confidence: 0.80
+      rationale: "Add an explicit type annotation or initializer. Prefer const with a literal initializer over let with any type."
+      agent_instructions: >
+        const config: Config = { ... }; // was: let config = { ... };
+        If the variable genuinely has no known type, use: let data: unknown;
+  - id: external_null_terminal
+    terminal:
+      recommendation:
+        - node_id: "failure:ts7/null_check_errors"
+          confidence: 0.90
+      rationale: "Use optional chaining (?.) and nullish coalescing (??) when dealing with external API responses. Validate at the boundary with Zod or io-ts schemas."
+      agent_instructions: >
+        const name = response.data?.user?.name ?? anonymous;
+        For critical paths, use Zod: const schema = z.object({ data: z.object({ ... }) });
+  - id: internal_null_terminal
+    terminal:
+      recommendation:
+        - node_id: "failure:ts7/null_check_errors"
+          confidence: 0.85
+      rationale: "Refactor to avoid nullable state. Either initialize all fields at declaration time or use a Builder/Factory pattern that guarantees non-null construction."
+      agent_instructions: >
+        class User {
+          name: string; // was: name: string | undefined
+          constructor(name: string) { this.name = name; }
+        }
+        If null is semantically meaningful, keep the union type and handle both branches.
+  - id: bivariant_hack_terminal
+    terminal:
+      recommendation:
+        - node_id: "failure:ts7/implicit_any_new"
+          confidence: 0.70
+      rationale: "strictFunctionTypes makes callback parameters contravariant. Either align the types or use a branded type workaround. The old bivariant hack (function signature with both) no longer works."
+      agent_instructions: >
+        Instead of: onClick: (e: MouseEvent) => void
+        Use: onClick: (e: Event) => void and narrow inside if needed.
+  - id: annotate_callback_terminal
+    terminal:
+      recommendation:
+        - node_id: "concept:ts7/strict_default"
+          confidence: 0.85
+      rationale: "Add explicit type annotations to the callback signature that match the expected interface."
+  - id: assign_in_constructor_terminal
+    terminal:
+      recommendation:
+        - node_id: "failure:ts7/null_check_errors"
+          confidence: 0.90
+      rationale: "Initialize the property in the constructor or at the declaration site. This satisfies strictPropertyInitialization."
+      agent_instructions: >
+        class Service {
+          client: HttpClient; // was: Uninitialized
+          constructor() { this.client = new HttpClient(); }
+        }
+  - id: definite_assignment_terminal
+    terminal:
+      recommendation:
+        - node_id: "failure:ts7/null_check_errors"
+          confidence: 0.80
+      rationale: "Use the definite assignment assertion (!) for properties set by DI frameworks or test setup."
+      agent_instructions: >
+        @Inject() private client!: HttpClient;
+        Use ! sparingly it disables strict checking for that property.
+  - id: general_approach
+    terminal:
+      recommendation:
+        - node_id: "workflow:ts7/strict_fixes"
+          confidence: 0.95
+      rationale: "Run tsc --noEmit, capture all errors, then focus on the highest-count error categories first. Use eslint-plugin-typescript-strict for automated fixes."

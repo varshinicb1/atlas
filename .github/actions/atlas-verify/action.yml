@@ -1,0 +1,69 @@
+name: "Atlas Verify"
+description: "Run verification checks on an .atlas bundle as a CI gate"
+author: "Atlas Knowledge"
+branding:
+  icon: "shield"
+  color: "green"
+
+inputs:
+  bundle:
+    description: "Path to the .atlas bundle to verify"
+    required: false
+    default: "bundle.atlas"
+  policy:
+    description: "Compliance policy to verify against (e.g., eu-ai-act)"
+    required: false
+    default: ""
+  fail-on-error:
+    description: "Fail the workflow if verification fails"
+    required: false
+    default: "true"
+  install-cli:
+    description: "Auto-install the atlas CLI if not present"
+    required: false
+    default: "true"
+
+outputs:
+  passed:
+    description: "Whether verification passed (true/false)"
+  checks-passed:
+    description: "Number of checks that passed"
+  checks-total:
+    description: "Total number of checks"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Install atlas CLI
+      if: inputs.install-cli == 'true'
+      shell: bash
+      run: |
+        if ! command -v atlas &> /dev/null; then
+          echo "Installing atlas CLI..."
+          ARCH=$(uname -m)
+          OS=$(uname -s | tr '[:upper:]' '[:lower:]')
+          URL="https://github.com/anomalyco/atlas/releases/latest/download/atlas-${OS}-${ARCH}.tar.gz"
+          curl -sL "$URL" -o /tmp/atlas.tar.gz
+          tar -xzf /tmp/atlas.tar.gz -C /usr/local/bin
+          echo "atlas CLI installed"
+        fi
+
+    - name: Verify bundle
+      shell: bash
+      run: |
+        POLICY_ARG=""
+        if [ -n "${{ inputs.policy }}" ]; then
+          POLICY_ARG="--policy ${{ inputs.policy }}"
+        fi
+        atlas verify --bundle ${{ inputs.bundle }} $POLICY_ARG --json > /tmp/atlas-verify.json
+        PASSED=$(cat /tmp/atlas-verify.json | jq -r '.passed')
+        CHECKS=$(cat /tmp/atlas-verify.json | jq -r '.checks | length')
+        PASSED_CHECKS=$(cat /tmp/atlas-verify.json | jq -r '[.checks[] | select(.passed==true)] | length')
+        echo "passed=$PASSED" >> $GITHUB_OUTPUT
+        echo "checks-passed=$PASSED_CHECKS" >> $GITHUB_OUTPUT
+        echo "checks-total=$CHECKS" >> $GITHUB_OUTPUT
+        if [ "${{ inputs.fail-on-error }}" = "true" ] && [ "$PASSED" != "true" ]; then
+          echo "Verification FAILED! See logs for details."
+          cat /tmp/atlas-verify.json | jq '.checks[] | select(.passed==false) | "  ✗ \(.name): \(.message)"' -r
+          exit 1
+        fi

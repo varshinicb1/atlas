@@ -1,0 +1,91 @@
+{
+  "name": "vscode-atlas",
+  "displayName": "Atlas Knowledge Graph",
+  "description": "Explore and navigate the Atlas knowledge graph from your editor. Hover over concepts, search packages, visualize decision trees.",
+  "version": "0.1.0",
+  "publisher": "atlas-sh",
+  "license": "Apache-2.0",
+  "repository": { "type": "git", "url": "https://github.com/anomalyco/atlas" },
+  "engines": { "vscode": "^1.96.0" },
+  "categories": ["Visualization", "Machine Learning", "Programming Languages"],
+  "keywords": ["atlas", "knowledge-graph", "ai", "agents"],
+  "icon": "media/icon.png",
+  "activationEvents": [
+    "onCommand:atlas.explore",
+    "onCommand:atlas.search",
+    "onCommand:atlas.compile",
+    "onLanguage:markdown"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "atlas.explore",
+        "title": "Atlas: Open Knowledge Graph Explorer"
+      },
+      {
+        "command": "atlas.search",
+        "title": "Atlas: Search Knowledge Packages"
+      },
+      {
+        "command": "atlas.compile",
+        "title": "Atlas: Compile Current Package"
+      },
+      {
+        "command": "atlas.solve",
+        "title": "Atlas: Ask a Question"
+      },
+      {
+        "command": "atlas.decide",
+        "title": "Atlas: Run Decision Tree"
+      },
+      {
+        "command": "atlas.init",
+        "title": "Atlas: Initialize New Knowledge Package"
+      }
+    ],
+    "menus": {
+      "editor/context": [
+        {
+          "when": "editorLangId == markdown",
+          "command": "atlas.compile",
+          "group": "Atlas"
+        }
+      ],
+      "explorer/context": [
+        {
+          "when": "resourceFilename =~ /\\.md$/",
+          "command": "atlas.compile",
+          "group": "Atlas"
+        }
+      ]
+    },
+    "keybindings": [
+      {
+        "command": "atlas.explore",
+        "key": "ctrl+alt+a",
+        "mac": "cmd+alt+a"
+      },
+      {
+        "command": "atlas.search",
+        "key": "ctrl+alt+s",
+        "mac": "cmd+alt+s"
+      }
+    ],
+    "configuration": {
+      "title": "Atlas",
+      "properties": {
+        "atlas.cliPath": {
+          "type": "string",
+          "default": "",
+          "description": "Path to the atlas CLI binary. Leave empty to search PATH."
+        },
+        "atlas.bundlePath": {
+          "type": "string",
+          "default": "",
+          "description": "Default .atlas bundle to use for queries."
+        }
+      }
+    }
+  }
+}

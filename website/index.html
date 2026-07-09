@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Atlas — The Knowledge Operating System</title>
+  <meta name="description" content="Atlas makes AI agents deterministic, verifiable, and compliant. Separate knowledge from reasoning. The Terraform for agent knowledge." />
+  <link rel="stylesheet" href="/css/style.css" />
+  <link rel="preload" href="/css/fonts.css" as="style" />
+</head>
+<body>
+  <!-- Navigation -->
+  <nav class="nav">
+    <div class="nav-inner">
+      <a href="/" class="logo">Atlas</a>
+      <div class="nav-links">
+        <a href="#product">Product</a>
+        <a href="#registry">Registry</a>
+        <a href="/docs">Docs</a>
+        <a href="https://github.com/anomalyco/atlas" target="_blank">GitHub</a>
+        <a href="#install" class="nav-cta">Install</a>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Hero -->
+  <section class="hero">
+    <div class="hero-bg"></div>
+    <div class="hero-content">
+      <p class="hero-badge">Deterministic AI Agent Knowledge</p>
+      <h1>Stop trusting LLMs.<br />Start trusting <em>knowledge</em>.</h1>
+      <p class="hero-sub">
+        Atlas separates <strong>knowledge</strong> from <strong>reasoning</strong>.
+        A compiled, verifiable, cryptographically-signed binary that lets AI agents
+        make decisions <em>without</em> an LLM call — 100x cheaper, 1000x faster,
+        provably correct.
+      </p>
+      <div class="hero-actions">
+        <a href="#install" class="btn btn-primary">Install Atlas</a>
+        <a href="https://github.com/anomalyco/atlas" target="_blank" class="btn btn-secondary">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+          Star on GitHub
+        </a>
+      </div>
+      <div class="hero-stats">
+        <div class="stat"><span class="stat-value">73+</span> Knowledge Nodes</div>
+        <div class="stat"><span class="stat-value">125+</span> Edges</div>
+        <div class="stat"><span class="stat-value">2</span> Decision Trees</div>
+        <div class="stat"><span class="stat-value">0</span> LLM Calls Needed</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Problem -->
+  <section class="section problem" id="problem">
+    <div class="section-inner">
+      <h2>The problem with every AI agent framework</h2>
+      <p class="section-sub">LangChain, CrewAI, AutoGen, smolagents — they all share the same fatal flaw.</p>
+      <div class="problem-grid">
+        <div class="problem-card">
+          <div class="problem-icon">🧠</div>
+          <h3>Knowledge is whatever fits in the prompt</h3>
+          <p>Every framework treats knowledge as "stuff in the context window." No structure, no persistence, no verification.</p>
+        </div>
+        <div class="problem-card">
+          <div class="problem-icon">💰</div>
+          <h3>Every decision costs money</h3>
+          <p>Each agent step requires an LLM call. At $0.10-1.00+ per decision, production agents bleed cash.</p>
+        </div>
+        <div class="problem-card">
+          <div class="problem-icon">🔮</div>
+          <h3>No deterministic fallback</h3>
+          <p>When the LLM hallucinates, there's no safety net. No verification, no audit trail, no replay.</p>
+        </div>
+        <div class="problem-card">
+          <div class="problem-icon">⚖️</div>
+          <h3>No compliance by design</h3>
+          <p>EU AI Act fines start at €15M on August 2, 2026. Today's frameworks can't explain why an agent did what it did.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Solution -->
+  <section class="section solution" id="product">
+    <div class="section-inner">
+      <h2>Knowledge as Code. <em>Decision Trees as Infrastructure.</em></h2>
+      <p class="section-sub">Atlas is a new kind of operating system — not for computers, but for engineering knowledge.</p>
+      <div class="solution-show">
+        <div class="terminal-window">
+          <div class="terminal-header">
+            <span class="terminal-dot"></span>
+            <span class="terminal-dot"></span>
+            <span class="terminal-dot"></span>
+            <span class="terminal-title">atlas.sh — ~/project</span>
+          </div>
+          <div class="terminal-body">
+            <p><span class="prompt">$</span> atlas init my-package --template flutter</p>
+            <p class="output">Created knowledge package 'my-package'</p>
+            <p><span class="prompt">$</span> atlas compile my-package.md decisions/ --out my-package.atlas</p>
+            <p class="output">Compiled 12 nodes, 8 edges, 1 decision tree → my-package.atlas</p>
+            <p><span class="prompt">$</span> atlas solve --bundle my-package.atlas "which widget?"</p>
+            <p class="output">Matched 5 nodes. Confidence: 0.95</p>
+            <p><span class="prompt">$</span> atlas decide --bundle my-package.atlas "widget" -c "answer=true"</p>
+            <p class="output">Path: widget_state → stateful_vs_builder → stateful_builder<br/>Rationale: Use StatefulWidget with a builder pattern...</p>
+            <p><span class="prompt">$</span> <span class="cursor">|</span></p>
+          </div>
+        </div>
+        <div class="solution-features">
+          <div class="feature">
+            <div class="feature-icon">✅</div>
+            <div><strong>Deterministic</strong> — Decision trees run with zero LLM calls</div>
+          </div>
+          <div class="feature">
+            <div class="feature-icon">🔍</div>
+            <div><strong>Verifiable</strong> — Every output is checked against built-in rules</div>
+          </div>
+          <div class="feature">
+            <div class="feature-icon">🔗</div>
+            <div><strong>Composable</strong> — Merge knowledge packages like Docker images</div>
+          </div>
+          <div class="feature">
+            <div class="feature-icon">📦</div>
+            <div><strong>Portable</strong> — Single .atlas binary, memory-mapped, signed</div>
+          </div>
+          <div class="feature">
+            <div class="feature-icon">🔐</div>
+            <div><strong>Auditable</strong> — Cryptographic audit trails for every decision</div>
+          </div>
+          <div class="feature">
+            <div class="feature-icon">✈️</div>
+            <div><strong>Offline</strong> — Full air-gapped deployment. No API calls needed</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- How It Works -->
+  <section class="section how-it-works" id="how">
+    <div class="section-inner">
+      <h2>How it works</h2>
+      <div class="steps">
+        <div class="step">
+          <div class="step-number">1</div>
+          <h3>Write knowledge as Markdown</h3>
+          <p>Concepts, APIs, workflows — all in a simple, human-readable format.</p>
+        </div>
+        <div class="step-arrow">→</div>
+        <div class="step">
+          <div class="step-number">2</div>
+          <h3>Compile to .atlas binary</h3>
+          <p>Zstd-compressed, memory-mapped, blake3-hashed. Portable across any platform.</p>
+        </div>
+        <div class="step-arrow">→</div>
+        <div class="step">
+          <div class="step-number">3</div>
+          <h3>Run agents on top</h3>
+          <p>Python SDK, MCP server, CLI, or Studio. Any interface. Zero LLM calls for 80% of queries.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Registry -->
+  <section class="section registry" id="registry">
+    <div class="section-inner">
+      <h2>Knowledge Package Registry</h2>
+      <p class="section-sub">Share, discover, and reuse knowledge packages. Like Docker Hub, but for agent knowledge.</p>
+      <div class="registry-search">
+        <input type="text" id="registrySearch" placeholder="Search packages..." oninput="searchPackages(this.value)" />
+      </div>
+      <div class="package-grid" id="packageGrid">
+        <div class="package-card">
+          <div class="package-name">flutter_core</div>
+          <div class="package-desc">Flutter SDK core patterns — widgets, elements, state management, rendering</div>
+          <div class="package-meta">
+            <span>73 nodes</span>
+            <span>125 edges</span>
+            <span>v0.1.0</span>
+          </div>
+        </div>
+        <div class="package-card">
+          <div class="package-name">rust_patterns</div>
+          <div class="package-desc">Rust engineering patterns — error handling, async, serde, testing</div>
+          <div class="package-meta">
+            <span>19 nodes</span>
+            <span>31 edges</span>
+            <span>v0.1.0</span>
+          </div>
+        </div>
+        <div class="package-card">
+          <div class="package-name">typescript_nextjs</div>
+          <div class="package-desc">TypeScript & Next.js patterns — App Router, hooks, server components</div>
+          <div class="package-meta">
+            <span>12 nodes</span>
+            <span>20 edges</span>
+            <span>v0.1.0</span>
+          </div>
+        </div>
+        <div class="package-card">
+          <div class="package-name">atlas</div>
+          <div class="package-desc">Atlas self-documentation — architecture, concepts, API references</div>
+          <div class="package-meta">
+            <span>18 nodes</span>
+            <span>28 edges</span>
+            <span>v0.1.0</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Install -->
+  <section class="section install" id="install">
+    <div class="section-inner">
+      <h2>Get started in 90 seconds</h2>
+      <div class="install-cmds">
+        <div class="install-card">
+          <div class="install-label">Python SDK</div>
+          <div class="install-code">pip install atlas-sdk</div>
+        </div>
+        <div class="install-card">
+          <div class="install-label">Install a package</div>
+          <div class="install-code">atlas install flutter_core.md</div>
+        </div>
+        <div class="install-card">
+          <div class="install-label">Ask a question</div>
+          <div class="install-code">from atlas_sdk import Agent<br/>agent = Agent("flutter_core")<br/>result = agent.solve("stateful widget")</div>
+        </div>
+      </div>
+      <div class="install-extra">
+        <p>Also available: VS Code Extension · <a href="https://github.com/anomalyco/atlas">GitHub Action</a> · MCP Server</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Comparison -->
+  <section class="section comparison" id="comparison">
+    <div class="section-inner">
+      <h2>Atlas vs. Everything Else</h2>
+      <div class="table-wrap">
+        <table class="compare-table">
+          <thead>
+            <tr>
+              <th></th>
+              <th>Atlas</th>
+              <th>smolagents</th>
+              <th>LangChain</th>
+              <th>CrewAI</th>
+              <th>AutoGen</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Deterministic decisions</td>
+              <td class="yes">✅ LLM-free</td>
+              <td class="no">❌</td>
+              <td class="no">❌</td>
+              <td class="no">❌</td>
+              <td class="no">❌</td>
+            </tr>
+            <tr>
+              <td>Built-in verification</td>
+              <td class="yes">✅</td>
+              <td class="no">❌</td>
+              <td class="partial">⚠️ Manual</td>
+              <td class="no">❌</td>
+              <td class="no">❌</td>
+            </tr>
+            <tr>
+              <td>Knowledge composition</td>
+              <td class="yes">✅</td>
+              <td class="no">❌</td>
+              <td class="partial">⚠️ RAG</td>
+              <td class="no">❌</td>
+              <td class="no">❌</td>
+            </tr>
+            <tr>
+              <td>Offline / Air-gapped</td>
+              <td class="yes">✅</td>
+              <td class="no">❌</td>
+              <td class="partial">⚠️ Partial</td>
+              <td class="no">❌</td>
+              <td class="no">❌</td>
+            </tr>
+            <tr>
+              <td>Audit trail</td>
+              <td class="yes">✅ Crypto</td>
+              <td class="no">❌</td>
+              <td class="partial">⚠️ LangSmith</td>
+              <td class="no">❌</td>
+              <td class="no">❌</td>
+            </tr>
+            <tr>
+              <td>Cost per query</td>
+              <td class="yes">~$0.0001</td>
+              <td>$0.10-1.00</td>
+              <td>$0.10-1.00</td>
+              <td>$0.10-1.00</td>
+              <td>$0.10-1.00</td>
+            </tr>
+            <tr>
+              <td>EU AI Act ready</td>
+              <td class="yes">✅ Built-in</td>
+              <td class="no">❌</td>
+              <td class="no">❌</td>
+              <td class="no">❌</td>
+              <td class="no">❌</td>
+            </tr>
+            <tr>
+              <td>Open source</td>
+              <td class="yes">✅</td>
+              <td class="yes">✅</td>
+              <td class="yes">✅</td>
+              <td class="yes">✅</td>
+              <td class="yes">✅</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <div class="footer-inner">
+      <div class="footer-col">
+        <div class="footer-logo">Atlas</div>
+        <p>The Knowledge Operating System for AI agents.</p>
+      </div>
+      <div class="footer-col">
+        <h4>Product</h4>
+        <a href="#product">Features</a>
+        <a href="#registry">Registry</a>
+        <a href="https://opencode.ai">Documentation</a>
+        <a href="https://atlas-sh.pages.dev/roadmap">Roadmap</a>
+      </div>
+      <div class="footer-col">
+        <h4>Community</h4>
+        <a href="https://github.com/anomalyco/atlas">GitHub</a>
+        <a href="https://discord.gg/invite/atlas">Discord</a>
+        <a href="https://twitter.com/atlas_os">Twitter</a>
+      </div>
+      <div class="footer-col">
+        <h4>Company</h4>
+        <a href="/blog">Blog</a>
+        <a href="/careers">Careers</a>
+        <a href="mailto:hello@atlas.sh">Contact</a>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <p>&copy; 2026 Atlas Knowledge. Apache 2.0 License.</p>
+    </div>
+  </footer>
+  <script src="/js/search.js"></script>
+</body>
+</html>

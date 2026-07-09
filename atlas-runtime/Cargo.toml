@@ -1,0 +1,23 @@
+[package]
+name = "atlas-runtime"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+atlas-ir.workspace = true
+atlas-compiler.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+blake3.workspace = true
+zstd.workspace = true
+anyhow.workspace = true
+log.workspace = true
+
+[features]
+default = ["ollama"]
+ollama = ["dep:ureq"]
+
+[dependencies.ureq]
+version = "3"
+optional = true
+default-features = false
