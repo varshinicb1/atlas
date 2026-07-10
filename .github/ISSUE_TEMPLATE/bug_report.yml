@@ -1,0 +1,55 @@
+name: Bug Report
+description: Report a bug in Atlas
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: Thanks for taking the time to report a bug!
+  - type: input
+    id: version
+    attributes:
+      label: Atlas version
+      description: Output of `atlas --version`
+      placeholder: "atlas 0.1.0"
+    validations:
+      required: true
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      options:
+        - CLI
+        - Compiler
+        - Runtime
+        - Python SDK
+        - MCP Server
+        - Registry
+        - VS Code Extension
+        - Studio
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: Describe the bug and what you expected to happen.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: Exact commands / steps to reproduce.
+      placeholder: |
+        1. Run `atlas compile ...`
+        2. See error
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Paste relevant logs (run with `RUST_LOG=debug`).
+      render: shell

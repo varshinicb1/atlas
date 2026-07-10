@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Documentation
+    url: https://atlas-sh.pages.dev
+    about: Read the Atlas documentation
+  - name: Registry API
+    url: https://atlas-hub-registry.cbvarshini1.workers.dev/api/v1/openapi
+    about: Browse the registry OpenAPI spec
