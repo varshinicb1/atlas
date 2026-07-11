@@ -19,7 +19,7 @@ beforeEach(() => {
   mockedExec.mockReset();
   mockedExists.mockReset();
   // Default: pretend a binary exists so runCLI reaches execFileSync.
-  mockedExists.mockImplementation((p: string) => typeof p === "string" && p.endsWith("atlas.exe"));
+  mockedExists.mockImplementation((p: string) => typeof p === "string" && (p.endsWith("atlas.exe") || p.endsWith("atlas") || p.endsWith("atlas-cli")));
 });
 
 describe("runCLI", () => {
@@ -55,12 +55,12 @@ describe("findBinary", () => {
   });
 
   it("locates the binary when present on PATH", () => {
-    mockedExists.mockImplementation((p: string) => typeof p === "string" && p.endsWith("atlas.exe"));
+    mockedExists.mockImplementation((p: string) => typeof p === "string" && (p.endsWith("atlas.exe") || p.endsWith("atlas") || p.endsWith("atlas-cli")));
     const origPath = process.env.PATH;
     process.env.PATH = [path.dirname("/some/bin/atlas.exe")].join(path.delimiter);
     try {
       const found = findBinary();
-      expect(found).toContain("atlas.exe");
+      expect(found).toMatch(/atlas(\.exe)?$/);
     } finally {
       process.env.PATH = origPath;
     }
@@ -69,7 +69,8 @@ describe("findBinary", () => {
 
 describe("resolvePath", () => {
   it("returns absolute paths unchanged", () => {
-    expect(resolvePath("C:\\abs\\b.atlas")).toBe("C:\\abs\\b.atlas");
+    const abs = process.platform === "win32" ? "C:\\abs\\b.atlas" : "/abs/b.atlas";
+    expect(resolvePath(abs)).toBe(abs);
   });
 });
 
