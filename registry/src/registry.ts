@@ -703,6 +703,154 @@ export class RegistryAgent extends DurableObject<Env> {
       generated_at: new Date().toISOString(),
     };
   }
+
+  // --- GDPR Compliance ---------------------------------------------------
+
+  async gdprDsar(org: string): Promise<{
+    organization: string;
+    packages: PackageMetadata[];
+    api_keys: Array<{ key_prefix: string; role: string; created_at: string; expires_at: string | null }>;
+    audit_entries: any[];
+    usage: Record<string, number>;
+  }> {
+    const names = (await this.ctx.storage.get<string[]>("packages_list")) || [];
+    const packages: PackageMetadata[] = [];
+    for (const name of names) {
+      const metaRaw = await this.ctx.storage.get<string>(`pkg:${name}:meta`);
+      if (metaRaw) {
+        const meta: PackageMetadata = JSON.parse(metaRaw);
+        if (meta.org === org) packages.push(meta);
+      }
+    }
+
+    const apiKeys: Array<{ key_prefix: string; role: string; created_at: string; expires_at: string | null }> = [];
+    const keyList = await this.env.PACKAGES.list({ prefix: "apikey:" });
+    for (const k of keyList.keys) {
+      const raw = await this.env.PACKAGES.get(k.name);
+      if (raw) {
+        const keyData = JSON.parse(raw);
+        if (keyData.org === org) {
+          apiKeys.push({
+            key_prefix: k.name.replace("apikey:", "").substring(0, 8) + "...",
+            role: keyData.role,
+            created_at: keyData.created_at || "unknown",
+            expires_at: keyData.expires_at || null,
+          });
+        }
+      }
+    }
+
+    const auditEntries: any[] = [];
+    const auditList = await this.env.PACKAGES.list({ prefix: "audit:" });
+    for (const k of auditList.keys) {
+      const raw = await this.env.PACKAGES.get(k.name);
+      if (raw) {
+        const entry = JSON.parse(raw);
+        if (entry.org === org) auditEntries.push(entry);
+      }
+    }
+
+    const usage: Record<string, number> = {};
+    const usageList = await this.env.PACKAGES.list({ prefix: `usage:${org}:` });
+    for (const k of usageList.keys) {
+      const raw = await this.env.PACKAGES.get(k.name);
+      if (raw) usage[k.name.replace(`usage:${org}:`, "")] = parseInt(raw, 10) || 0;
+    }
+
+    return {
+      organization: org,
+      packages,
+      api_keys: apiKeys,
+      audit_entries: auditEntries,
+      usage,
+    };
+  }
+
+  async gdprExport(org: string): Promise<any> {
+    const data = await this.gdprDsar(org);
+    return {
+      export_date: new Date().toISOString(),
+      format_version: "1.0",
+      data,
+    };
+  }
+
+  async gdprForget(org: string): Promise<{
+    success: boolean;
+    deleted_packages: number;
+    deleted_keys: number;
+    deleted_audit_entries: number;
+  }> {
+    const names = (await this.ctx.storage.get<string[]>("packages_list")) || [];
+    let deletedPackages = 0;
+    for (const name of names) {
+      const metaRaw = await this.ctx.storage.get<string>(`pkg:${name}:meta`);
+      if (metaRaw) {
+        const meta: PackageMetadata = JSON.parse(metaRaw);
+        if (meta.org === org) {
+          await this.ctx.storage.delete(`pkg:${name}:meta`);
+          await this.ctx.storage.delete(`pkg:${name}:files`);
+          deletedPackages++;
+        }
+      }
+    }
+    const remaining: string[] = [];
+    for (const name of names) {
+      const metaRaw = await this.ctx.storage.get<string>(`pkg:${name}:meta`);
+      if (metaRaw) remaining.push(name);
+    }
+    await this.ctx.storage.put("packages_list", remaining);
+
+    let deletedKeys = 0;
+    const keyList = await this.env.PACKAGES.list({ prefix: "apikey:" });
+    for (const k of keyList.keys) {
+      const raw = await this.env.PACKAGES.get(k.name);
+      if (raw) {
+        const keyData = JSON.parse(raw);
+        if (keyData.org === org) {
+          await this.env.PACKAGES.delete(k.name);
+          deletedKeys++;
+        }
+      }
+    }
+
+    let deletedAudit = 0;
+    const auditList = await this.env.PACKAGES.list({ prefix: "audit:" });
+    for (const k of auditList.keys) {
+      const raw = await this.env.PACKAGES.get(k.name);
+      if (raw) {
+        const entry = JSON.parse(raw);
+        if (entry.org === org) {
+          await this.env.PACKAGES.delete(k.name);
+          deletedAudit++;
+        }
+      }
+    }
+
+    const usageList = await this.env.PACKAGES.list({ prefix: `usage:${org}:` });
+    for (const k of usageList.keys) {
+      await this.env.PACKAGES.delete(k.name);
+    }
+
+    await this.env.PACKAGES.put(
+      `audit:gdpr:${org}:${Date.now()}`,
+      JSON.stringify({
+        action: "gdpr_forget",
+        org,
+        timestamp: new Date().toISOString(),
+        deleted_packages: deletedPackages,
+        deleted_keys: deletedKeys,
+        deleted_audit_entries: deletedAudit,
+      })
+    );
+
+    return {
+      success: true,
+      deleted_packages: deletedPackages,
+      deleted_keys: deletedKeys,
+      deleted_audit_entries: deletedAudit,
+    };
+  }
 }
 
 export class RateLimitError extends Error {

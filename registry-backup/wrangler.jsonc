@@ -1,0 +1,22 @@
+{
+  "name": "atlas-registry-backup",
+  "main": "src/index.ts",
+  "compatibility_date": "2025-04-01",
+  "triggers": {
+    "crons": ["0 6 * * *"]
+  },
+  "r2_buckets": [
+    {
+      "binding": "BACKUPS",
+      "bucket_name": "atlas-registry-backups",
+      "preview_bucket_name": "atlas-registry-backups-preview"
+    }
+  ],
+  "kv_namespaces": [
+    {
+      "binding": "CONFIG",
+      "id": "config",
+      "preview_id": "config-preview"
+    }
+  ]
+}

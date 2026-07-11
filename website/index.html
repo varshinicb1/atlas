@@ -12,14 +12,14 @@
   <!-- Navigation -->
   <nav class="nav">
     <div class="nav-inner">
-      <a href="/" class="logo">Atlas</a>
-      <div class="nav-links">
-        <a href="#product">Product</a>
-        <a href="#registry">Registry</a>
-        <a href="/docs">Docs</a>
-        <a href="https://github.com/anomalyco/atlas" target="_blank">GitHub</a>
-        <a href="#install" class="nav-cta">Install</a>
-      </div>
+        <a href="/" class="logo">Atlas</a>
+        <div class="nav-links">
+          <a href="#product">Product</a>
+          <a href="#registry">Registry</a>
+          <a href="https://github.com/varshinicb1/atlas" target="_blank">GitHub</a>
+          <a href="#enterprise">Enterprise</a>
+          <a href="#install" class="nav-cta">Install</a>
+        </div>
     </div>
   </nav>
 
@@ -37,15 +37,15 @@
       </p>
       <div class="hero-actions">
         <a href="#install" class="btn btn-primary">Install Atlas</a>
-        <a href="https://github.com/anomalyco/atlas" target="_blank" class="btn btn-secondary">
+          <a href="https://github.com/varshinicb1/atlas" target="_blank" class="btn btn-secondary">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
           Star on GitHub
         </a>
       </div>
-      <div class="hero-stats">
-        <div class="stat"><span class="stat-value">73+</span> Knowledge Nodes</div>
-        <div class="stat"><span class="stat-value">125+</span> Edges</div>
-        <div class="stat"><span class="stat-value">2</span> Decision Trees</div>
+      <div class="hero-stats" id="heroStats">
+        <div class="stat"><span class="stat-value">280+</span> Knowledge Nodes</div>
+        <div class="stat"><span class="stat-value">480+</span> Edges</div>
+        <div class="stat"><span class="stat-value">13</span> Packages</div>
         <div class="stat"><span class="stat-value">0</span> LLM Calls Needed</div>
       </div>
     </div>
@@ -92,7 +92,7 @@
             <span class="terminal-dot"></span>
             <span class="terminal-dot"></span>
             <span class="terminal-dot"></span>
-            <span class="terminal-title">atlas.sh — ~/project</span>
+            <span class="terminal-title">atlas — ~/project</span>
           </div>
           <div class="terminal-body">
             <p><span class="prompt">$</span> atlas init my-package --template flutter</p>
@@ -101,7 +101,7 @@
             <p class="output">Compiled 12 nodes, 8 edges, 1 decision tree → my-package.atlas</p>
             <p><span class="prompt">$</span> atlas solve --bundle my-package.atlas "which widget?"</p>
             <p class="output">Matched 5 nodes. Confidence: 0.95</p>
-            <p><span class="prompt">$</span> atlas decide --bundle my-package.atlas "widget" -c "answer=true"</p>
+            <p><span class="prompt">$</span> atlas decide --bundle my-package.atlas "widget" -c "needs_state=true"</p>
             <p class="output">Path: widget_state → stateful_vs_builder → stateful_builder<br/>Rationale: Use StatefulWidget with a builder pattern...</p>
             <p><span class="prompt">$</span> <span class="cursor">|</span></p>
           </div>
@@ -166,46 +166,63 @@
   <section class="section registry" id="registry">
     <div class="section-inner">
       <h2>Knowledge Package Registry</h2>
-      <p class="section-sub">Share, discover, and reuse knowledge packages. Like Docker Hub, but for agent knowledge.</p>
-      <div class="registry-search">
-        <input type="text" id="registrySearch" placeholder="Search packages..." oninput="searchPackages(this.value)" />
-      </div>
-      <div class="package-grid" id="packageGrid">
-        <div class="package-card">
-          <div class="package-name">flutter_core</div>
-          <div class="package-desc">Flutter SDK core patterns — widgets, elements, state management, rendering</div>
-          <div class="package-meta">
-            <span>73 nodes</span>
-            <span>125 edges</span>
-            <span>v0.1.0</span>
+          <p class="section-sub">Share, discover, and reuse knowledge packages. Like Docker Hub, but for agent knowledge. <strong>13 packages</strong> and growing.</p>
+          <div class="registry-search">
+            <input type="text" id="registrySearch" placeholder="Search packages by name, language, or framework..." oninput="searchPackages(this.value)" />
           </div>
+          <div class="package-grid" id="packageGrid">
+            <div class="package-card"><div class="package-name">Loading...</div></div>
+          </div>
+    </div>
+  </section>
+
+  <!-- Enterprise -->
+  <section class="section enterprise" id="enterprise">
+    <div class="section-inner">
+      <h2>Enterprise-Grade, <em>Fully Open Source</em></h2>
+      <p class="section-sub">SSO, GDPR, audit, RBAC — all included. No paywalls, no enterprise license fees.</p>
+      <div class="enterprise-grid">
+        <div class="enterprise-card">
+          <div class="ent-icon">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+          </div>
+          <h3>SSO / OIDC</h3>
+          <p>Authenticate with Google, Azure AD, Okta, or any OpenID Connect provider. JWT verification via JWKS.</p>
         </div>
-        <div class="package-card">
-          <div class="package-name">rust_patterns</div>
-          <div class="package-desc">Rust engineering patterns — error handling, async, serde, testing</div>
-          <div class="package-meta">
-            <span>19 nodes</span>
-            <span>31 edges</span>
-            <span>v0.1.0</span>
+        <div class="enterprise-card">
+          <div class="ent-icon">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
           </div>
+          <h3>GDPR Compliance</h3>
+          <p>DSAR, data portability export, and right to erasure endpoints. Built for SOC2 and EU AI Act readiness.</p>
         </div>
-        <div class="package-card">
-          <div class="package-name">typescript_nextjs</div>
-          <div class="package-desc">TypeScript & Next.js patterns — App Router, hooks, server components</div>
-          <div class="package-meta">
-            <span>12 nodes</span>
-            <span>20 edges</span>
-            <span>v0.1.0</span>
+        <div class="enterprise-card">
+          <div class="ent-icon">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
           </div>
+          <h3>Automated Backups</h3>
+          <p>Daily R2 backups with 30-day retention. Manual trigger endpoint for on-demand snapshots.</p>
         </div>
-        <div class="package-card">
-          <div class="package-name">atlas</div>
-          <div class="package-desc">Atlas self-documentation — architecture, concepts, API references</div>
-          <div class="package-meta">
-            <span>18 nodes</span>
-            <span>28 edges</span>
-            <span>v0.1.0</span>
+        <div class="enterprise-card">
+          <div class="ent-icon">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
           </div>
+          <h3>RBAC + Audit</h3>
+          <p>Role-based access (admin, publisher, viewer). Full audit trail with timestamps, IPs, and API key tracking.</p>
+        </div>
+        <div class="enterprise-card">
+          <div class="ent-icon">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+          </div>
+          <h3>Rate Limiting</h3>
+          <p>60 requests/minute per API key with <code>X-RateLimit-Reset</code> headers. Protection on all endpoints.</p>
+        </div>
+        <div class="enterprise-card">
+          <div class="ent-icon">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+          </div>
+          <h3>Open Source</h3>
+          <p>Apache 2.0 license. Audit the code, fork it, deploy it yourself. No enterprise paywall — ever.</p>
         </div>
       </div>
     </div>
@@ -229,9 +246,9 @@
           <div class="install-code">from atlas_sdk import Agent<br/>agent = Agent("flutter_core")<br/>result = agent.solve("stateful widget")</div>
         </div>
       </div>
-      <div class="install-extra">
-        <p>Also available: VS Code Extension · <a href="https://github.com/anomalyco/atlas">GitHub Action</a> · MCP Server</p>
-      </div>
+          <div class="install-extra">
+            <p>Also available: <code>cargo install atlas-cli</code> · VS Code Extension · <a href="https://github.com/varshinicb1/atlas">GitHub Action</a> · MCP Server</p>
+          </div>
     </div>
   </section>
 
@@ -293,6 +310,22 @@
               <td class="no">❌</td>
             </tr>
             <tr>
+              <td>SSO / OIDC</td>
+              <td class="yes">✅</td>
+              <td class="no">❌</td>
+              <td class="no">❌</td>
+              <td class="no">❌</td>
+              <td class="no">❌</td>
+            </tr>
+            <tr>
+              <td>GDPR compliance</td>
+              <td class="yes">✅</td>
+              <td class="no">❌</td>
+              <td class="no">❌</td>
+              <td class="no">❌</td>
+              <td class="no">❌</td>
+            </tr>
+            <tr>
               <td>Cost per query</td>
               <td class="yes">~$0.0001</td>
               <td>$0.10-1.00</td>
@@ -332,21 +365,18 @@
       <div class="footer-col">
         <h4>Product</h4>
         <a href="#product">Features</a>
-        <a href="#registry">Registry</a>
-        <a href="https://opencode.ai">Documentation</a>
-        <a href="https://atlas-sh.pages.dev/roadmap">Roadmap</a>
+          <a href="#registry">Registry</a>
+          <a href="#enterprise">Enterprise</a>
+          <a href="https://github.com/varshinicb1/atlas">GitHub Docs</a>
       </div>
       <div class="footer-col">
         <h4>Community</h4>
-        <a href="https://github.com/anomalyco/atlas">GitHub</a>
-        <a href="https://discord.gg/invite/atlas">Discord</a>
-        <a href="https://twitter.com/atlas_os">Twitter</a>
+        <a href="https://github.com/varshinicb1/atlas">GitHub</a>
       </div>
       <div class="footer-col">
         <h4>Company</h4>
-        <a href="/blog">Blog</a>
-        <a href="/careers">Careers</a>
-        <a href="mailto:hello@atlas.sh">Contact</a>
+        <a href="https://github.com/varshinicb1/atlas/issues">Issues</a>
+          <a href="https://github.com/varshinicb1/atlas/discussions">Discussions</a>
       </div>
     </div>
     <div class="footer-bottom">

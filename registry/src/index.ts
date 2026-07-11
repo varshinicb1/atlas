@@ -36,6 +36,134 @@ function getClientIp(request: Request): string {
   return request.headers.get("CF-Connecting-IP") || request.headers.get("X-Forwarded-For") || "unknown";
 }
 
+interface SSOConfig {
+  org: string;
+  issuer: string;
+  client_id: string;
+  jwks_uri: string;
+  email_domain: string;
+  role_mapping: Record<string, string[]>;
+  created_at: string;
+  updated_at: string;
+}
+
+function base64urlToBuffer(str: string): ArrayBuffer {
+  let base64 = str.replace(/-/g, "+").replace(/_/g, "/");
+  while (base64.length % 4 !== 0) base64 += "=";
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return bytes.buffer;
+}
+
+async function importJwk(jwk: any): Promise<CryptoKey> {
+  const isEc = jwk.kty === "EC";
+  return crypto.subtle.importKey(
+    "jwk", jwk,
+    isEc
+      ? { name: "ECDSA", namedCurve: jwk.crv || "P-256" }
+      : { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
+    false, ["verify"]
+  );
+}
+
+async function getJwks(env: Env, config: SSOConfig): Promise<{ keys: any[] }> {
+  const cacheKey = `jwks:${config.org}`;
+  const cached = await env.PACKAGES.get(cacheKey);
+  if (cached) return JSON.parse(cached);
+  const resp = await fetch(config.jwks_uri);
+  if (!resp.ok) throw new Error(`Failed to fetch JWKS: ${resp.status}`);
+  const jwks = await resp.json() as { keys: any[] };
+  await env.PACKAGES.put(cacheKey, JSON.stringify(jwks), { expirationTtl: 300 });
+  return jwks;
+}
+
+async function listSsoConfigs(env: Env): Promise<SSOConfig[]> {
+  const list = await env.PACKAGES.list({ prefix: "sso:" });
+  const configs: SSOConfig[] = [];
+  for (const key of list.keys) {
+    const raw = await env.PACKAGES.get(key.name);
+    if (raw) configs.push(JSON.parse(raw));
+  }
+  return configs;
+}
+
+async function authenticateJwt(
+  env: Env,
+  jwt: string,
+  opts: { admin?: boolean }
+): Promise<{ org: string; role: string; email: string }> {
+  const parts = jwt.split(".");
+  if (parts.length !== 3) throw new Error("Invalid JWT");
+
+  let header: any, payload: any;
+  try {
+    header = JSON.parse(atob(parts[0].replace(/-/g, "+").replace(/_/g, "/")));
+    payload = JSON.parse(atob(parts[1].replace(/-/g, "+").replace(/_/g, "/")));
+  } catch {
+    throw new Error("Invalid JWT encoding");
+  }
+
+  if (!payload.iss) throw new Error("JWT missing issuer");
+
+  const ssoConfigs = await listSsoConfigs(env);
+  const ssoConfig = ssoConfigs.find((c) => c.issuer === payload.iss);
+  if (!ssoConfig) throw new Error("No SSO configuration found for this issuer");
+
+  if (payload.exp && payload.exp * 1000 < Date.now()) {
+    throw new Error("JWT has expired");
+  }
+
+  if (payload.aud && ssoConfig.client_id) {
+    const auds = Array.isArray(payload.aud) ? payload.aud : [payload.aud];
+    if (!auds.includes(ssoConfig.client_id)) {
+      throw new Error("JWT audience mismatch");
+    }
+  }
+
+  const jwks = await getJwks(env, ssoConfig);
+  const key = jwks.keys.find((k: any) => k.kid === header.kid);
+  if (!key) throw new Error("Invalid JWT: no matching JWK key found");
+
+  const publicKey = await importJwk(key);
+  const signature = base64urlToBuffer(parts[2]);
+  const data = new TextEncoder().encode(parts[0] + "." + parts[1]);
+
+  const verifyAlg = key.kty === "EC"
+    ? { name: "ECDSA", hash: "SHA-256" }
+    : { name: "RSASSA-PKCS1-v1_5" };
+
+  const valid = await crypto.subtle.verify(verifyAlg, publicKey, signature, data);
+  if (!valid) throw new Error("JWT signature invalid");
+
+  const email = payload.email || payload.preferred_username;
+  if (!email) throw new Error("JWT does not contain email or preferred_username");
+
+  const emailDomain = email.split("@")[1];
+  if (ssoConfig.email_domain && emailDomain !== ssoConfig.email_domain) {
+    throw new Error("Email domain not allowed for this organization");
+  }
+
+  let role = "viewer";
+  if (ssoConfig.role_mapping) {
+    for (const [r, patterns] of Object.entries(ssoConfig.role_mapping)) {
+      for (const pattern of patterns as string[]) {
+        if (pattern === email || (pattern.startsWith("*@") && email.endsWith(pattern.slice(1)))) {
+          role = r;
+          break;
+        }
+      }
+      if (role !== "viewer") break;
+    }
+  }
+
+  if (opts.admin && role !== "admin") {
+    throw new Error("Admin access required");
+  }
+
+  return { org: ssoConfig.org, role, email };
+}
+
 // Attaches X-RateLimit-* headers to a response. When the key is present the
 // durable-object rate-limit state is checked first; on exhaustion a 429 is
 // returned instead of running `fn`.
@@ -96,9 +224,19 @@ async function requireAuth(
   env: Env,
   request: Request,
   opts: { admin?: boolean } = {}
-): Promise<{ org: string; role: string }> {
+): Promise<{ org: string; role: string; email?: string }> {
   const apiKey = getApiKey(request);
   if (!apiKey) throw new Error("API key required");
+
+  if (apiKey.split(".").length === 3) {
+    try {
+      JSON.parse(atob(apiKey.split(".")[0]));
+      return await authenticateJwt(env, apiKey, opts);
+    } catch {
+      // Not a JWT, fall through to API key check
+    }
+  }
+
   const raw = await env.PACKAGES.get(`apikey:${apiKey}`);
   if (!raw) throw new Error("Invalid API key");
   let auth: { org: string; role: string; last_used?: string | null; expires_at?: string | null };
@@ -137,6 +275,40 @@ export default {
     const stub = env.RegistryAgent.get(id) as unknown as RegistryAgent;
 
     try {
+      // --- GDPR Compliance ------------------------------------------------
+
+      if (path === "/api/v1/gdpr/dsar" && request.method === "GET") {
+        const apiKey = getApiKey(request);
+        return await withRateLimit(stub, apiKey, async () => {
+          const auth = await requireAuth(env, request);
+          const data = await stub.gdprDsar(auth.org);
+          return jsonResponse(data);
+        });
+      }
+
+      if (path === "/api/v1/gdpr/export" && request.method === "GET") {
+        const apiKey = getApiKey(request);
+        return await withRateLimit(stub, apiKey, async () => {
+          const auth = await requireAuth(env, request);
+          const data = await stub.gdprExport(auth.org);
+          return new Response(JSON.stringify(data, null, 2), {
+            headers: {
+              "Content-Type": "application/json",
+              "Content-Disposition": `attachment; filename="atlas-gdpr-export-${auth.org}.json"`,
+            },
+          });
+        });
+      }
+
+      if (path === "/api/v1/gdpr/forget" && request.method === "DELETE") {
+        const apiKey = getApiKey(request);
+        return await withRateLimit(stub, apiKey, async () => {
+          const auth = await requireAuth(env, request, { admin: true });
+          const result = await stub.gdprForget(auth.org);
+          return jsonResponse(result);
+        });
+      }
+
       if (path === "/api/v1/admin/migrate-org" && request.method === "POST") {
         const auth = await requireAuth(env, request, { admin: true });
         const apiKey = getApiKey(request);
@@ -361,6 +533,45 @@ export default {
         });
       }
 
+      // --- SSO Configuration --------------------------------------------
+
+      if (path === "/api/v1/admin/sso" && request.method === "POST") {
+        const auth = await requireAuth(env, request, { admin: true });
+        const apiKey = getApiKey(request);
+        return await withRateLimit(stub, apiKey, async () => {
+          const body = await request.json() as Partial<SSOConfig>;
+          if (!body.issuer || !body.client_id || !body.jwks_uri || !body.email_domain) {
+            return errorResponse("issuer, client_id, jwks_uri, and email_domain are required", 400);
+          }
+          const org = auth.org;
+          const existingRaw = await env.PACKAGES.get(`sso:${org}`);
+          const existing = existingRaw ? JSON.parse(existingRaw) : null;
+          const config: SSOConfig = {
+            org,
+            issuer: body.issuer,
+            client_id: body.client_id,
+            jwks_uri: body.jwks_uri,
+            email_domain: body.email_domain,
+            role_mapping: body.role_mapping || { viewer: ["*@*"] },
+            created_at: existing ? existing.created_at : new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          };
+          await env.PACKAGES.put(`sso:${org}`, JSON.stringify(config));
+          return jsonResponse(config, 201);
+        });
+      }
+
+      if (path === "/api/v1/admin/sso" && request.method === "GET") {
+        const auth = await requireAuth(env, request, { admin: true });
+        const apiKey = getApiKey(request);
+        return await withRateLimit(stub, apiKey, async () => {
+          const org = url.searchParams.get("org") || auth.org;
+          const raw = await env.PACKAGES.get(`sso:${org}`);
+          if (!raw) return errorResponse("SSO configuration not found for this organization", 404);
+          return jsonResponse(JSON.parse(raw));
+        });
+      }
+
       // --- Admin: backup / export / import -----------------------------
 
       if (path === "/api/v1/admin/export" && request.method === "GET") {
@@ -481,7 +692,10 @@ export default {
         msg.includes("API key required") ||
         msg.includes("Invalid API key") ||
         msg.includes("Invalid or missing") ||
-        msg.includes("expired")
+        msg.includes("expired") ||
+        msg.includes("JWT") ||
+        msg.includes("JWK") ||
+        msg.includes("signature invalid")
       ) return errorResponse(msg, 401);
       if (
         msg.includes("organization") ||
@@ -564,7 +778,14 @@ const OPENAPI_SPEC = {
     "/api/v1/admin/keys/{key}": { delete: { summary: "Revoke an API key (admin)", operationId: "revokeKey", security: [{ ApiKeyAuth: [] }], parameters: [{ name: "key", in: "path", required: true, schema: { type: "string" } }] } },
     "/api/v1/admin/export": { get: { summary: "Export all packages (admin)", operationId: "exportAll", security: [{ ApiKeyAuth: [] }] } },
     "/api/v1/admin/import": { post: { summary: "Import packages from a dump (admin)", operationId: "importAll", security: [{ ApiKeyAuth: [] }] } },
+    "/api/v1/gdpr/dsar": { get: { summary: "Data Subject Access Request — get all data for your org", operationId: "gdprDsar", security: [{ ApiKeyAuth: [] }] } },
+    "/api/v1/gdpr/export": { get: { summary: "Export all your data in machine-readable format (GDPR Article 20)", operationId: "gdprExport", security: [{ ApiKeyAuth: [] }] } },
+    "/api/v1/gdpr/forget": { delete: { summary: "Right to erasure — delete all data for your org (GDPR Article 17)", operationId: "gdprForget", security: [{ ApiKeyAuth: [] }] } },
     "/metrics": { get: { summary: "Prometheus-style metrics", operationId: "metrics" } },
+    "/api/v1/admin/sso": {
+      get: { summary: "Get SSO OIDC configuration (admin)", operationId: "getSsoConfig", security: [{ ApiKeyAuth: [] }], parameters: [{ name: "org", in: "query", schema: { type: "string" } }] },
+      post: { summary: "Set SSO OIDC configuration (admin)", operationId: "setSsoConfig", security: [{ ApiKeyAuth: [] }], requestBody: { required: true, content: { "application/json": { schema: { type: "object", properties: { issuer: { type: "string" }, client_id: { type: "string" }, jwks_uri: { type: "string" }, email_domain: { type: "string" }, role_mapping: { type: "object" } }, required: ["issuer", "client_id", "jwks_uri", "email_domain"] } } } } },
+    },
   },
   components: {
     securitySchemes: {
