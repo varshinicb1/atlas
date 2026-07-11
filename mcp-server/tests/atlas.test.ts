@@ -55,14 +55,26 @@ describe("findBinary", () => {
   });
 
   it("locates the binary when present on PATH", () => {
-    mockedExists.mockImplementation((p: string) => typeof p === "string" && (p.endsWith("atlas.exe") || p.endsWith("atlas") || p.endsWith("atlas-cli")));
-    const origPath = process.env.PATH;
-    process.env.PATH = [path.dirname("/some/bin/atlas.exe")].join(path.delimiter);
+    // findBinary searches candidates ["atlas-cli","atlas"] (or .exe on win32)
+    // across $HOME/.atlas/bin, /usr/local/bin, /usr/bin, then PATH dirs.
+    // Make exactly ONE file exist (the first candidate in a controlled PATH dir)
+    // and clear HOME/LOCALAPPDATA so home-based dirs can't interfere.
+    const isWin = process.platform === "win32";
+    const binDir = isWin ? "C:\\tools" : "/opt/atlas/bin";
+    const binName = isWin ? "atlas-cli.exe" : "atlas-cli";
+    const expected = path.join(binDir, binName);
+
+    const orig = { PATH: process.env.PATH, HOME: process.env.HOME, LOCALAPPDATA: process.env.LOCALAPPDATA };
+    delete process.env.HOME;
+    delete process.env.LOCALAPPDATA;
+    process.env.PATH = binDir;
+    mockedExists.mockImplementation((p) => p === expected);
     try {
-      const found = findBinary();
-      expect(found).toMatch(/atlas(\.exe)?$/);
+      expect(findBinary()).toBe(expected);
     } finally {
-      process.env.PATH = origPath;
+      process.env.PATH = orig.PATH;
+      if (orig.HOME !== undefined) process.env.HOME = orig.HOME;
+      if (orig.LOCALAPPDATA !== undefined) process.env.LOCALAPPDATA = orig.LOCALAPPDATA;
     }
   });
 });
