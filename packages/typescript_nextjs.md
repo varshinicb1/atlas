@@ -7,8 +7,8 @@ purpose: Document idiomatic patterns, component models, and type-safe practices 
 problem_solved: Standardizes how teams approach routing, rendering, data fetching, and type safety in Next.js projects, reducing boilerplate and preventing common pitfalls around server/client boundaries and React hook usage.
 install: npx create-next-app@latest my-app --typescript --tailwind --eslint
 dependencies:
-  - React
-  - Node.js
+  - concept:react
+  - concept:nodejs
 concepts:
   - name: App Router
     id: concept:app-router
@@ -34,8 +34,14 @@ concepts:
   - name: Middleware
     id: concept:middleware
     description: Edge-based request interception via middleware.ts for redirects, rewrites, authentication checks, and header manipulation before route handling.
+  - name: React
+    id: concept:react
+    description: A declarative, component-based JavaScript library for building user interfaces maintained by Meta
+  - name: Node.js
+    id: concept:nodejs
+    description: A JavaScript runtime built on V8 for building server-side and networking applications
   - name: Web Platform
-    id: "Web Platform"
+    id: concept:web-platform
     description: The broader web platform — browsers, standards, and runtime environments that Next.js targets.
 apis:
   - name: useState<T>(initial) -> [state, setState]
@@ -110,22 +116,22 @@ failures:
     cause: Fetching data in Client Components (useEffect + fetch) when the same data could be fetched and passed down from a Server Component.
     fix: Move data fetching to Server Components or use route handlers with React Query for client-side caching.
 extends:
-  - React
+  - concept:react
 implements: []
 uses:
-  - App Router
-  - Server Components
-  - Client Components
-  - React Hooks
-  - Type System
-part_of: Web Platform
+  - concept:app-router
+  - concept:server-components
+  - concept:client-components
+  - concept:react-hooks
+  - concept:type-system
+part_of: concept:web-platform
 solves:
-  - full-stack web development with React and type safety
+  - problem:full-stack-react-typescript
 alternatives:
-  - Remix
-  - SvelteKit
-  - Nuxt 3
-  - Astro
+  - package:remix
+  - package:sveltekit
+  - package:nuxt
+  - package:astro
 ---
 
 Next.js App Router introduces a file-system convention where `page.tsx`, `layout.tsx`, `loading.tsx`, and `error.tsx` files define route segments with built-in support for nested layouts, streaming via Suspense, and granular error boundaries. This colocation pattern eliminates manual route configuration and enforces a predictable project structure. Server Components are the default — they execute on the server, can directly query databases or read the filesystem, and only send their rendered output (not JavaScript bundles) to the client. Client Components, marked with `"use client"`, are used sparingly for interactive UI that needs browser APIs, event handlers, or React hooks.

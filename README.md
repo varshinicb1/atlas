@@ -39,8 +39,13 @@ See [benchmarks vs smolagents](docs/benchmarks-vs-smolagents.md).
 ### Install
 
 ```bash
-# From crates.io (coming soon)
+# From crates.io
 cargo install atlas-cli
+
+# Download prebuilt binaries
+# Grab the latest `atlas` binary for your platform from:
+# https://github.com/varshinicb1/atlas/releases
+# (Linux, macOS, and Windows builds available)
 
 # From source
 git clone https://github.com/varshinicb1/atlas

@@ -7,22 +7,44 @@ purpose: Compile-time safe state management for Flutter
 problem_solved: Reactive state management with provider scoping and disposal
 install: flutter pub add riverpod
 dependencies:
-  - package:flutter/widgets
+  - concept:flutter/widgets
 concepts:
   - name: State Management
     id: concept:flutter/state_management
+    description: Pattern for managing and sharing application state across widgets with predictable updates and lifecycle management
   - name: Provider
     id: concept:flutter/provider
+    description: The core building block that creates, reads, and disposes state objects with compile-time safety and auto-disposal
   - name: Notifier
     id: concept:flutter/notifier
+    description: A synchronous state provider exposing mutable state via a class-based API replacing the older StateNotifier pattern
   - name: AsyncNotifier
     id: concept:flutter/async_notifier
+    description: An asynchronous state provider for initializing and managing state that depends on async operations like API calls or database reads
   - name: ConsumerWidget
     id: concept:flutter/consumer_widget
+    description: A StatelessWidget subclass that gains access to WidgetRef for watching and reading providers without needing a BuildContext
   - name: WidgetRef
     id: concept:flutter/widget_ref
+    description: The reference object passed to consumers providing watch, read, invalidate, and listen methods for interacting with providers
   - name: ProviderContainer
     id: concept:flutter/provider_container
+    description: The top-level container that holds all provider instances and their states, enabling provider override for testing
+  - name: Reactive State Problem
+    id: problem:flutter/reactive_state
+    description: Challenge of managing UI state that reactively updates across widget boundaries without manual propagation
+  - name: Flutter Widgets Framework
+    id: concept:flutter/widgets
+    description: The core Flutter widget framework providing the build context, element tree, and rendering pipeline
+  - name: Provider (legacy)
+    id: package:flutter/provider
+    description: The legacy Provider package for dependency injection and state management in Flutter
+  - name: BLoC Pattern
+    id: package:flutter/bloc
+    description: Business Logic Component pattern for Flutter using streams and events for predictable state management
+  - name: GetIt
+    id: package:flutter/get_it
+    description: Service locator pattern for Flutter providing simple dependency injection without a widget tree dependency
 apis:
   - name: ref.watch()
     id: api:flutter/riverpod/watch

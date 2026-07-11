@@ -18,7 +18,7 @@ install: |
   atlas install typescript_7_migration.md
   ```
 dependencies:
-  - TypeScript 5.x or 6.x
+  - concept:typescript-legacy
 concepts:
   - name: Project Corsa
     id: concept:ts7/corsa
@@ -69,14 +69,23 @@ concepts:
       circular references, deeply nested generics, and infer in complex
       conditional types. The TS team considers these bug fixes, but they
       may surface as new type errors in existing code.
+  - name: TypeScript 5.x/6.x Legacy
+    id: concept:ts5-6-legacy
+    description: Staying on the older JavaScript-based TypeScript compiler, losing the 10x performance gains of the Go-native TS 7
+  - name: Bun tsc Alternative
+    id: concept:bun-tsc
+    description: Using Bun's built-in type checker as a TypeScript 7 alternative, offering less compatibility but potentially simpler setup
   - name: Go Binary Distribution
     id: concept:ts7/binary
     description: >
       TypeScript 7 ships as a platform-specific Go binary via npm (with
       optional Go source distribution). Installation is unchanged for most
       users, but CI images using tsc may need platform compatibility checks.
+  - name: TypeScript (legacy)
+    id: concept:typescript-legacy
+    description: TypeScript 5.x and 6.x — the JavaScript-based compiler versions that TS 7 replaces with a Go-native implementation
   - name: TypeScript Ecosystem
-    id: "TypeScript Ecosystem"
+    id: concept:ts7/ecosystem
     description: The broader TypeScript tooling and community ecosystem that the TS 7 migration operates within.
 apis:
   - name: tsc --checkers
@@ -204,20 +213,20 @@ failures:
     cause: TypeScript 7 ships as a Go binary with platform-specific builds.
     fix: Check TS 7 platform support matrix. Use Node.js 18+ on x86_64 Linux or macOS.
 extends:
-  - TypeScript
+  - concept:typescript-legacy
 implements: []
 uses:
-  - Project Corsa
-  - Strict Mode Default
-  - Parallel Checking
-  - Module Resolution Deprecation
-  - ES5 Target Removal
-part_of: TypeScript Ecosystem
+  - concept:ts7/corsa
+  - concept:ts7/strict_default
+  - concept:ts7/parallel_checking
+  - concept:ts7/module_resolution
+  - concept:ts7/es5_removal
+part_of: concept:ts7/ecosystem
 solves:
-  - TypeScript 7 migration planning and execution
+  - problem:ts7-migration
 alternatives:
-  - Continue using TypeScript 5.x/6.x (lose performance gains)
-  - Use bun tsc or alternatives (less compatible)
+  - concept:ts5-6-legacy
+  - concept:bun-tsc
 ---
 
 # TypeScript 7 Migration Guide

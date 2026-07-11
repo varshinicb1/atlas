@@ -12,6 +12,7 @@ install: |
       sdk: flutter
   ```
 dependencies:
+  - package:flutter
   - "sdk:dart"
 concepts:
   - name: Widget
@@ -39,7 +40,7 @@ concepts:
     id: concept:key
     description: Controls widget identity across rebuilds. Prevents state loss when widgets change position in the tree.
   - name: Flutter SDK
-    id: "package:flutter"
+    id: concept:flutter_sdk
     description: The Flutter SDK framework itself — the upstream package that flutter_core depends on.
 apis:
   - name: setState(VoidCallback)
@@ -106,7 +107,7 @@ extends:
   - "concept:widget"
 implements: []
 uses: []
-part_of: "package:flutter"
+part_of: concept:flutter_sdk
 solves:
   - "problem:cross_platform_reactive_ui"
 alternatives:

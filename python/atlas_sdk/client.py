@@ -30,9 +30,9 @@ from .models import (
 def _find_binary() -> str:
     """Locate the `atlas` CLI binary."""
     if platform.system() == "Windows":
-        candidates = ["atlas-cli.exe", "atlas.exe"]
+        candidates = ["atlas.exe", "atlas-cli.exe"]
     else:
-        candidates = ["atlas-cli", "atlas"]
+        candidates = ["atlas", "atlas-cli"]
 
     # 1. Check PATH
     for c in candidates:

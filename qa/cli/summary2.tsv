@@ -1,0 +1,19 @@
+
+F01_multi	EC=1	EMPTY	PANIC=False	compile atlas.md riverpod.md --out multi.atlas --json
+F02_mixed	EC=1	EMPTY	PANIC=False	compile atlas.md packages\decisions\cloudflare_workers.yaml --out mixed.atlas --json
+F03_dupsrc	EC=1	EMPTY	PANIC=False	compile atlas.md atlas.md --out dup.atlas --json
+F04_out_nodir	EC=1	EMPTY	PANIC=False	compile atlas.md --out nonexist_sub\out.atlas --json
+F05_out_isdir	EC=0	JSON_BAD	PANIC=False	compile atlas.md --out decisions --json
+F06_relpath	EC=1	EMPTY	PANIC=False	compile ..\packages\atlas.md --out rel.atlas --json
+F07_abspath	EC=0	JSON_BAD	PANIC=False	compile C:\Users\varsh\OneDrive\Documents\3Atlas\qa\cli\atlas.md --out C:\Users\varsh\OneDrive\Documents\3Atlas\qa\cli\abs.atlas --json
+F08_spacepath	EC=0	JSON_BAD	PANIC=False	compile atlas.md --out out with spaces.atlas --json
+F09_idempotent	EC=n/a	SAME	n/a	compile atlas.md twice ->  vs 
+G01_solve_det	EC=n/a	SAME	n/asolve x10 identical query
+G02_decide_det	EC=n/a	SAME	n/a	decide x5
+G03_solve_ok	EC=0	JSON_BAD	PANIC=False	solve binary format --bundle baseline.atlas --json
+G04_decide_ok	EC=0	JSON_BAD	PANIC=False	decide choose edge storage --bundle baseline.atlas --json
+G05_dump_ok	EC=0	JSON_BAD	PANIC=False	dump --bundle baseline.atlas --json
+G06_install_ok	EC=0	JSON_BAD	PANIC=False	install baseline.atlas --name qa_baseline --json
+H01_panic_bt	EC=101	EMPTY	PANIC=True	solve x --bundle trunc.atlas --json
+I01_init_json	EC=0	JSON_BAD	PANIC=False	init jsonpkg --json
+I02_init_unktmpl	EC=0	JSON_BAD	PANIC=False	init unktmpl -t nope --json

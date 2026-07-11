@@ -9,25 +9,25 @@ nodes:
     question: "Does the widget need to manage mutable state that changes over time?"
     node_type: boolean
     branches:
-      - condition: "answer=true"
+      - condition: "needs_mutable_state=true"
         next: stateful_vs_builder
-      - condition: "answer=false"
+      - condition: "needs_mutable_state=false"
         next: stateless_vs_consumer
   - id: stateless_vs_consumer
     question: "Does the widget need to react to data changes from an InheritedWidget or provider?"
     node_type: boolean
     branches:
-      - condition: "answer=true"
+      - condition: "needs_reactive_data=true"
         next: stateless_consumer_terminal
-      - condition: "answer=false"
+      - condition: "needs_reactive_data=false"
         next: stateless_simple_terminal
   - id: stateful_vs_builder
     question: "Will the widget build different UI based on external data that cannot be passed via constructor?"
     node_type: boolean
     branches:
-      - condition: "answer=true"
+      - condition: "needs_external_data=true"
         next: stateful_builder_approach
-      - condition: "answer=false"
+      - condition: "needs_external_data=false"
         next: stateful_simple_terminal
   - id: stateless_consumer_terminal
     terminal:
@@ -47,9 +47,9 @@ nodes:
     question: "Does the mutable state come from the widget's own lifecycle or from external sources?"
     node_type: boolean
     branches:
-      - condition: "answer=external"
+      - condition: "state_source=external"
         next: stateful_builder_terminal
-      - condition: "answer=internal"
+      - condition: "state_source=internal"
         next: stateful_simple_terminal
   - id: stateful_builder_terminal
     terminal:
@@ -76,25 +76,25 @@ nodes:
     question: "Is the state local to a single widget subtree or shared across multiple unrelated parts of the app?"
     node_type: boolean
     branches:
-      - condition: "answer=local"
+      - condition: "state_scope=local"
         next: simple_vs_complex_node
-      - condition: "answer=shared"
+      - condition: "state_scope=shared"
         next: shared_complexity_node
   - id: simple_vs_complex_node
     question: "Does the local state have complex validation logic or multiple interdependent fields?"
     node_type: boolean
     branches:
-      - condition: "answer=true"
+      - condition: "state_is_complex=true"
         next: local_complex_terminal
-      - condition: "answer=false"
+      - condition: "state_is_complex=false"
         next: local_simple_terminal
   - id: shared_complexity_node
     question: "Does the shared state need to be persisted, have undo/redo, or be inspected by developer tools?"
     node_type: boolean
     branches:
-      - condition: "answer=true"
+      - condition: "needs_devtools=true"
         next: bloc_riverpod_terminal
-      - condition: "answer=false"
+      - condition: "needs_devtools=false"
         next: inherited_provider_terminal
   - id: local_simple_terminal
     terminal:

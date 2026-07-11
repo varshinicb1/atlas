@@ -96,6 +96,7 @@ interface ExportDump {
     metadata: PackageMetadata;
     files: Record<string, string>;
     versions: string[];
+    version_snapshots?: Record<string, VersionSnapshot>;
   }>;
 }
 
@@ -222,7 +223,9 @@ export class RegistryAgent extends DurableObject<Env> {
       const raw = await this.ctx.storage.get<string>(`pkg:${name}:meta`);
       if (raw) {
         const meta: PackageMetadata = JSON.parse(raw);
-        if (!org || meta.org === org) {
+        if (org === "") {
+          if (!meta.org) packages.push(meta);
+        } else if (!org || meta.org === org) {
           packages.push(meta);
         }
       }
@@ -252,7 +255,9 @@ export class RegistryAgent extends DurableObject<Env> {
       const raw = await this.ctx.storage.get<string>(`pkg:${name}:meta`);
       if (!raw) continue;
       const meta: PackageMetadata = JSON.parse(raw);
-      if (org && meta.org !== org) continue;
+      if (org === "") {
+        if (meta.org) continue;
+      } else if (org && meta.org !== org) continue;
 
       let score = 0;
       const nameLower = meta.name.toLowerCase();
@@ -284,7 +289,7 @@ export class RegistryAgent extends DurableObject<Env> {
     }));
   }
 
-  async publishPackage(data: PublishInput, auth: { org: string; role: string }, ip: string): Promise<{ success: boolean; name: string; version: string; replaced: boolean }> {
+  async publishPackage(data: PublishInput, auth: { org: string; role: string }, ip: string, apiKey?: string): Promise<{ success: boolean; name: string; version: string; replaced: boolean }> {
     if (auth.role === "viewer") {
       throw new AuthError("Viewers cannot publish packages.");
     }
@@ -294,8 +299,28 @@ export class RegistryAgent extends DurableObject<Env> {
     if (!data.version) {
       throw new ValidationError("Version is required.");
     }
+    if (!data.version.match(/^[a-zA-Z0-9._-]+$/)) {
+      throw new ValidationError("Version must be alphanumeric with dots, underscores, or hyphens.");
+    }
     if (!data.files || Object.keys(data.files).length === 0) {
       throw new ValidationError("At least one file is required.");
+    }
+    if (data.files && typeof data.files === "object") {
+      for (const [k, v] of Object.entries(data.files)) {
+        if (typeof v !== "string") {
+          throw new ValidationError(`File "${k}" value must be a string.`);
+        }
+      }
+    }
+    if (data.tags !== undefined && !Array.isArray(data.tags)) {
+      throw new ValidationError("Tags must be an array of strings.");
+    }
+    if (Array.isArray(data.tags)) {
+      for (const t of data.tags) {
+        if (typeof t !== "string") {
+          throw new ValidationError("Tags must be an array of strings.");
+        }
+      }
     }
 
     const names = (await this.ctx.storage.get<string[]>("packages_list")) || [];
@@ -352,7 +377,7 @@ export class RegistryAgent extends DurableObject<Env> {
       action: "publish",
       package_name: data.name,
       version: data.version,
-      api_key: "",
+      api_key: apiKey || "",
       org: auth.org,
       timestamp: new Date().toISOString(),
       ip,
@@ -382,6 +407,14 @@ export class RegistryAgent extends DurableObject<Env> {
     await this.ctx.storage.put("packages_list", filtered);
     await this.ctx.storage.delete(`pkg:${name}:meta`);
     await this.ctx.storage.delete(`pkg:${name}:files`);
+    const versionsRaw = await this.ctx.storage.get<string>(`pkg:${name}:versions`);
+    if (versionsRaw) {
+      const versions: string[] = JSON.parse(versionsRaw);
+      for (const v of versions) {
+        await this.ctx.storage.delete(`pkg:${name}:v:${v}`);
+      }
+    }
+    await this.ctx.storage.delete(`pkg:${name}:versions`);
 
     return { success: true };
   }
@@ -419,7 +452,10 @@ export class RegistryAgent extends DurableObject<Env> {
     };
   }
 
-  async migrateOrg(fromOrg: string | null, toOrg: string): Promise<{ migrated: number }> {
+  async migrateOrg(fromOrg: string | null, toOrg: string, auth?: { org: string }): Promise<{ migrated: number }> {
+    if (auth && fromOrg !== null && auth.org !== fromOrg) {
+      throw new AuthError("You can only migrate packages from your own organization.");
+    }
     const names = (await this.ctx.storage.get<string[]>("packages_list")) || [];
     let migrated = 0;
     for (const name of names) {
@@ -556,18 +592,26 @@ export class RegistryAgent extends DurableObject<Env> {
 
   // --- Backup / export ---------------------------------------------------
 
-  async exportAll(): Promise<ExportDump> {
+  async exportAll(auth?: { org: string }): Promise<ExportDump> {
     const names = (await this.ctx.storage.get<string[]>("packages_list")) || [];
     const packages: ExportDump["packages"] = [];
     for (const name of names) {
       const metaRaw = await this.ctx.storage.get<string>(`pkg:${name}:meta`);
       if (!metaRaw) continue;
+      const meta = JSON.parse(metaRaw) as PackageMetadata;
+      if (auth && meta.org && meta.org !== auth.org) continue;
       const filesRaw = (await this.ctx.storage.get<string>(`pkg:${name}:files`)) || "{}";
       const versionsRaw = (await this.ctx.storage.get<string>(`pkg:${name}:versions`)) || "[]";
+      const version_snapshots: Record<string, VersionSnapshot> = {};
+      for (const v of JSON.parse(versionsRaw) as string[]) {
+        const snap = await this.ctx.storage.get<string>(`pkg:${name}:v:${v}`);
+        if (snap) version_snapshots[v] = JSON.parse(snap);
+      }
       packages.push({
-        metadata: JSON.parse(metaRaw) as PackageMetadata,
+        metadata: meta,
         files: JSON.parse(filesRaw) as Record<string, string>,
         versions: JSON.parse(versionsRaw) as string[],
+        version_snapshots,
       });
     }
     return {
@@ -577,7 +621,7 @@ export class RegistryAgent extends DurableObject<Env> {
     };
   }
 
-  async importAll(dump: ExportDump): Promise<{ imported: number }> {
+  async importAll(dump: ExportDump, auth?: { org: string }): Promise<{ imported: number }> {
     if (!dump || !Array.isArray(dump.packages)) {
       throw new ValidationError("Invalid export dump: missing packages array.");
     }
@@ -591,6 +635,11 @@ export class RegistryAgent extends DurableObject<Env> {
       if (!meta.name.match(/^[a-z0-9_-]+$/)) {
         throw new ValidationError(`Invalid package name in dump: ${meta.name}`);
       }
+      const resolvedOrg = meta.org || auth?.org || "";
+      if (auth && resolvedOrg !== auth.org) {
+        throw new AuthError("Import package org does not match your organization.");
+      }
+      meta.org = resolvedOrg;
       await this.ctx.storage.put(`pkg:${meta.name}:meta`, JSON.stringify(meta));
       await this.ctx.storage.put(
         `pkg:${meta.name}:files`,
@@ -601,6 +650,11 @@ export class RegistryAgent extends DurableObject<Env> {
           `pkg:${meta.name}:versions`,
           JSON.stringify(pkg.versions)
         );
+      }
+      if (pkg.version_snapshots) {
+        for (const [v, snap] of Object.entries(pkg.version_snapshots)) {
+          await this.ctx.storage.put(`pkg:${meta.name}:v:${v}`, JSON.stringify(snap));
+        }
       }
       if (!names.includes(meta.name)) names.push(meta.name);
       imported++;
@@ -633,6 +687,8 @@ export class RegistryAgent extends DurableObject<Env> {
     const usageList = await this.env.PACKAGES.list({ prefix: "usage:" });
     for (const k of usageList.keys) {
       if (k.name.includes(":publishes:")) {
+        const colonCount = (k.name.match(/:/g) || []).length;
+        if (colonCount !== 3) continue;
         const v = await this.env.PACKAGES.get(k.name);
         if (v) total_publishes += parseInt(v, 10) || 0;
       }

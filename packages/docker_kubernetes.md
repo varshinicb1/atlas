@@ -10,11 +10,11 @@ install: |
   brew install docker kubectl kind
   ```
 dependencies:
-  - docker
-  - kubectl
+  - package:docker
+  - package:kubectl
 concepts:
   - name: Cloud Native Computing
-    id: "Cloud Native Computing"
+    id: concept:domain/cloud-native
     description: The broader cloud-native ecosystem (CNCF) of containers, orchestration, and declarative infrastructure these patterns belong to.
   - name: Dockerfile
     id: concept:docker/dockerfile
@@ -146,16 +146,16 @@ uses:
   - concept:k8s/service
   - concept:k8s/probes
   - concept:k8s/resources
-part_of: "Cloud Native Computing"
+part_of: concept:domain/cloud-native
 depends_on:
   - package:postgres/patterns
   - package:go/patterns
 solves:
-  - reproducible container images and resilient, autoscaling orchestration
+  - problem:reproducible-container-orchestration
 alternatives:
-  - Nomad for simpler scheduling
-  - AWS ECS/Fargate for managed containers
-  - Docker Swarm for small clusters
+  - package:hashicorp/nomad
+  - package:aws/ecs
+  - package:docker/swarm
 ---
 # Docker & Kubernetes Patterns
 

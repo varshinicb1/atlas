@@ -19,25 +19,25 @@ nodes:
     question: "Do you need to handle many concurrent connections (thousands) or just a handful?"
     node_type: boolean
     branches:
-      - condition: "answer=many"
+      - condition: "io_concurrency=many"
         next: async_terminal
-      - condition: "answer=few"
+      - condition: "io_concurrency=few"
         next: threads_terminal
   - id: cpu_concurrency_node
     question: "Can the work be split into independent chunks across processes?"
     node_type: boolean
     branches:
-      - condition: "answer=true"
+      - condition: "cpu_parallelizable=true"
         next: multiprocessing_terminal
-      - condition: "answer=false"
+      - condition: "cpu_parallelizable=false"
         next: sync_terminal
   - id: mixed_node
     question: "Is the I/O portion large enough to dominate latency under load?"
     node_type: boolean
     branches:
-      - condition: "answer=true"
+      - condition: "io_dominates=true"
         next: async_terminal
-      - condition: "answer=false"
+      - condition: "io_dominates=false"
         next: multiprocessing_terminal
   - id: async_terminal
     terminal:
@@ -77,17 +77,17 @@ nodes:
     question: "Do you need runtime validation and coercion of untrusted input (API payloads, config files)?"
     node_type: boolean
     branches:
-      - condition: "answer=true"
+      - condition: "needs_validation=true"
         next: pydantic_terminal
-      - condition: "answer=false"
+      - condition: "needs_validation=false"
         next: dataclass_node
   - id: dataclass_node
     question: "Do you need immutability or reduced memory footprint?"
     node_type: boolean
     branches:
-      - condition: "answer=true"
+      - condition: "needs_immutability=true"
         next: frozen_dataclass_terminal
-      - condition: "answer=false"
+      - condition: "needs_immutability=false"
         next: plain_dataclass_terminal
   - id: pydantic_terminal
     terminal:

@@ -7,10 +7,10 @@ purpose: Document Cloudflare Workers patterns — Workers/Pages, KV/D1/R2/Durabl
 problem_solved: Provides a reference for building serverless, edge-deployed applications on Cloudflare's global network, reducing cold-start issues, binding misconfig, and platform-limit surprises.
 install: npm install wrangler --save-dev
 dependencies:
-  - wrangler
+  - package:wrangler
 concepts:
   - name: Edge Computing
-    id: "Edge Computing"
+    id: concept:domain/edge-computing
     description: The broader edge-computing model of running code close to users across a global network, which Cloudflare Workers embody.
   - name: Workers Runtime
     id: concept:cf/workers-runtime
@@ -139,16 +139,16 @@ uses:
   - concept:cf/durable-objects
   - concept:cf/wrangler
   - concept:cf/limits
-part_of: "Edge Computing"
+part_of: concept:domain/edge-computing
 depends_on:
   - package:rust/patterns
   - package:postgres/patterns
 solves:
-  - globally distributed, low-latency serverless applications without managing servers
+  - problem:cf/serverless-edge
 alternatives:
-  - AWS Lambda@Edge for the AWS ecosystem
-  - Deno Deploy for the Deno runtime
-  - Fastly Compute for VCL replacement
+  - package:aws/lambda-edge
+  - package:deno/deploy
+  - package:fastly/compute
 ---
 # Cloudflare Workers Patterns
 

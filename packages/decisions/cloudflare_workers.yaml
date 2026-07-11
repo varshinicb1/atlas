@@ -21,9 +21,9 @@ nodes:
     question: "Do you need read-after-write consistency across regions?"
     node_type: boolean
     branches:
-      - condition: "answer=true"
+      - condition: "needs_strong_consistency=true"
         next: d1_terminal
-      - condition: "answer=false"
+      - condition: "needs_strong_consistency=false"
         next: kv_terminal
   - id: kv_terminal
     terminal:
@@ -61,9 +61,9 @@ nodes:
     question: "Is the Worker a single-purpose function or a multi-route application?"
     node_type: boolean
     branches:
-      - condition: "answer=single"
+      - condition: "scope=single"
         next: single_terminal
-      - condition: "answer=multi"
+      - condition: "scope=multi"
         next: router_terminal
   - id: single_terminal
     terminal:

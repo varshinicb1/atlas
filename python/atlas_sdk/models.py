@@ -9,6 +9,7 @@ class Node:
     kind: str
     description: Optional[str] = None
     version: Optional[str] = None
+    confidence: float = 1.0
 
 
 @dataclass

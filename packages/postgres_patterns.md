@@ -10,10 +10,10 @@ install: |
   brew install postgresql@16
   ```
 dependencies:
-  - postgresql
+  - package:postgresql
 concepts:
   - name: Relational Databases
-    id: "Relational Databases"
+    id: concept:domain/relational-databases
     description: The broader category of relational, SQL-based database systems that PostgreSQL exemplifies.
   - name: B-tree Indexing
     id: concept:pg/btree
@@ -141,15 +141,15 @@ uses:
   - concept:pg/mvcc
   - concept:pg/pooling
   - concept:pg/migrations
-part_of: "Relational Databases"
+part_of: concept:domain/relational-databases
 depends_on:
   - package:docker/kubernetes
 solves:
-  - correct, performant, and operationally safe relational data storage
+  - problem:relational-data-storage
 alternatives:
-  - MySQL for simpler replication
-  - SQLite for embedded single-file stores
-  - CockroachDB for distributed SQL
+  - package:mysql
+  - package:sqlite
+  - package:cockroachdb
 ---
 # PostgreSQL Patterns
 

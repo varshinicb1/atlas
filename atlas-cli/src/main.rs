@@ -228,9 +228,13 @@ struct NodeOutput {
     kind: String,
     description: Option<String>,
     version: Option<String>,
+    confidence: f32,
 }
 
 fn run_solve(bundle_path: &Path, query: &str, json: bool) -> Result<(), anyhow::Error> {
+    if query.trim().is_empty() {
+        anyhow::bail!("Error: query cannot be empty. Please provide a search query.");
+    }
     let mut runtime = atlas_runtime::Runtime::new();
     let name = runtime.load(bundle_path)?;
     let result = runtime.solve(&name, query)?;
@@ -247,6 +251,7 @@ fn run_solve(bundle_path: &Path, query: &str, json: bool) -> Result<(), anyhow::
                 kind: format!("{:?}", n.kind),
                 description: n.description.clone(),
                 version: n.version.clone(),
+                confidence: n.confidence,
             }).collect(),
         };
         println!("{}", serde_json::to_string(&output)?);
@@ -290,6 +295,9 @@ struct RecOutput {
 }
 
 fn run_decide(bundle_path: &Path, query: &str, context: &[KeyVal], json: bool) -> Result<(), anyhow::Error> {
+    if query.trim().is_empty() {
+        anyhow::bail!("Error: query cannot be empty. Please provide a search query.");
+    }
     let mut runtime = atlas_runtime::Runtime::new();
     let name = runtime.load(bundle_path)?;
     let mut ctx = std::collections::HashMap::new();
@@ -361,6 +369,9 @@ fn run_verify(bundle_path: &Path, artifact: Option<&str>, policy: Option<&str>, 
 }
 
 fn run_reason(bundle_path: &Path, query: &str, model: Option<String>, json: bool) -> Result<(), anyhow::Error> {
+    if query.trim().is_empty() {
+        anyhow::bail!("Error: query cannot be empty. Please provide a search query.");
+    }
     let mut runtime = atlas_runtime::Runtime::new();
     let name = runtime.load(bundle_path)?;
     let solve_result = runtime.solve(&name, query)?;
@@ -554,11 +565,47 @@ fn run_publish(path: PathBuf, registry: &str, api_key: Option<&str>, json: bool)
         files.insert(filename, text);
     }
 
+    let version = files.values().find_map(|text| {
+        let lines: Vec<&str> = text.lines().collect();
+        if lines.len() >= 2 && lines[0].trim() == "---" {
+            lines[1..].iter().find_map(|l| {
+                let l = l.trim();
+                l.strip_prefix("version:").map(|v| v.trim().trim_matches('"').to_string())
+            })
+        } else {
+            None
+        }
+    }).unwrap_or_else(|| "0.1.0".to_string());
+
+    let tags: Vec<String> = files.values().find_map(|text| {
+        let lines: Vec<&str> = text.lines().collect();
+        if lines.len() >= 2 && lines[0].trim() == "---" {
+            lines[1..].iter().find_map(|l| {
+                let l = l.trim();
+                if let Some(val) = l.strip_prefix("tags:") {
+                    let val = val.trim();
+                    if val.starts_with('[') {
+                        Some(val.trim_matches(|c| c == '[' || c == ']').split(',')
+                            .map(|t| t.trim().trim_matches('"').to_string())
+                            .filter(|t| !t.is_empty())
+                            .collect())
+                    } else {
+                        Some(vec![])
+                    }
+                } else {
+                    None
+                }
+            })
+        } else {
+            None
+        }
+    }).unwrap_or_default();
+
     let body = serde_json::json!({
         "name": name,
-        "version": "0.1.0",
+        "version": version,
         "description": description,
-        "tags": [],
+        "tags": tags,
         "files": files,
     });
 

@@ -228,7 +228,7 @@ describe("Registry HTTP API", () => {
         }),
         env as any
       );
-      const r = await app.fetch(req("/metrics"), env as any);
+      const r = await app.fetch(req("/metrics", { headers: { "X-API-Key": ADMIN_KEY.name } }), env as any);
       expect(r.status).toBe(200);
       expect(r.headers.get("Content-Type")).toContain("text/plain");
       const text = await r.text();
@@ -237,7 +237,7 @@ describe("Registry HTTP API", () => {
     });
 
     it("returns JSON when requested", async () => {
-      const r = await app.fetch(req("/metrics", { headers: { Accept: "application/json" } }), env as any);
+      const r = await app.fetch(req("/metrics", { headers: { "X-API-Key": ADMIN_KEY.name, Accept: "application/json" } }), env as any);
       const data = await r.json();
       expect(data.total_packages).toBe(0);
     });

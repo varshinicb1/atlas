@@ -1,0 +1,26 @@
+id: p_ts7_decision
+trigger:
+  intent: choose_solution
+  tags: [p_ts7]
+root: start_node
+nodes:
+  - id: start_node
+    question: "TODO: Define the yes/no question to start the decision tree?"
+    node_type: boolean
+    branches:
+      - condition: "answer=true"
+        next: terminal_yes
+      - condition: "answer=false"
+        next: terminal_no
+  - id: terminal_yes
+    terminal:
+      recommendation:
+        - node_id: "concept:solution_a"
+          confidence: 0.8
+      rationale: "Recommendation based on {domain} best practices."
+  - id: terminal_no
+    terminal:
+      recommendation:
+        - node_id: "concept:solution_b"
+          confidence: 0.9
+      rationale: "Recommendation based on {domain} best practices."

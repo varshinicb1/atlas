@@ -9,25 +9,25 @@ nodes:
     question: "Is the state local to one component/subtree or shared across distant parts of the tree?"
     node_type: boolean
     branches:
-      - condition: "answer=local"
+      - condition: "state_scope=local"
         next: local_complexity_node
-      - condition: "answer=shared"
+      - condition: "state_scope=shared"
         next: shared_frequency_node
   - id: local_complexity_node
     question: "Does the local state have multiple interdependent fields or async transitions?"
     node_type: boolean
     branches:
-      - condition: "answer=true"
+      - condition: "state_is_complex=true"
         next: usereducer_terminal
-      - condition: "answer=false"
+      - condition: "state_is_complex=false"
         next: usestate_terminal
   - id: shared_frequency_node
     question: "Does the shared value change on every keystroke/interaction (high frequency) or rarely?"
     node_type: boolean
     branches:
-      - condition: "answer=true"
+      - condition: "state_is_high_frequency=true"
         next: external_store_terminal
-      - condition: "answer=false"
+      - condition: "state_is_high_frequency=false"
         next: context_terminal
   - id: usestate_terminal
     terminal:
@@ -65,17 +65,17 @@ nodes:
     question: "Does this component need browser-only APIs, event handlers, or local interactivity?"
     node_type: boolean
     branches:
-      - condition: "answer=true"
+      - condition: "needs_interactivity=true"
         next: client_terminal
-      - condition: "answer=false"
+      - condition: "needs_interactivity=false"
         next: data_source_node
   - id: data_source_node
     question: "Does it read directly from a database, filesystem, or server-only secret?"
     node_type: boolean
     branches:
-      - condition: "answer=true"
+      - condition: "needs_server_data=true"
         next: server_terminal
-      - condition: "answer=false"
+      - condition: "needs_server_data=false"
         next: server_terminal
   - id: client_terminal
     terminal:

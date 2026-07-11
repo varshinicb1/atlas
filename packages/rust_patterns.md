@@ -7,9 +7,9 @@ purpose: Document idiomatic Rust programming patterns for production systems
 problem_solved: Provides a reference for Rust's unique ownership-based memory safety, zero-cost abstractions, and concurrency model
 install: cargo add tokio serde serde_json
 dependencies:
-  - tokio
-  - serde
-  - serde_json
+  - package:tokio
+  - package:serde
+  - package:serde_json
 concepts:
   - name: Error Handling
     id: concept:rust/error-handling
@@ -36,7 +36,7 @@ concepts:
     id: concept:rust/smart-pointers
     description: Box, Rc, Arc, Cell, RefCell providing heap allocation, reference counting, and interior mutability
   - name: Systems Programming
-    id: "systems programming"
+    id: concept:domain/systems-programming
     description: The broader domain of systems-level software development that Rust excels at.
 apis:
   - name: Result<T, E>
@@ -120,12 +120,12 @@ uses:
   - concept:rust/lifetimes
   - concept:rust/async
   - concept:rust/serde
-part_of: "systems programming"
+part_of: concept:domain/systems-programming
 solves:
-  - memory-safe systems programming with zero-cost abstractions
+  - problem:memory-safe-systems-programming
 alternatives:
-  - Rust Design Patterns (refactoring.guru)
-  - Rust API Guidelines
+  - package:rust-design-patterns
+  - package:rust-api-guidelines
 ---
 
 # Rust Engineering Patterns

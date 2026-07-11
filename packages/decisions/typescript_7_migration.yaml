@@ -21,49 +21,49 @@ nodes:
     question: "You are multiple major versions behind. Do you have a dedicated migration budget?"
     node_type: boolean
     branches:
-      - condition: "answer=true"
+      - condition: "has_migration_budget=true"
         next: phased_migration_terminal
-      - condition: "answer=false"
+      - condition: "has_migration_budget=false"
         next: stay_put_terminal
   - id: assess_impact
     question: "Is strict mode already enabled in your tsconfig.json?"
     node_type: boolean
     branches:
-      - condition: "answer=true"
+      - condition: "strict_mode_enabled=true"
         next: module_resolution_check
-      - condition: "answer=false"
+      - condition: "strict_mode_enabled=false"
         next: strict_mode_enable_terminal
   - id: optimize_perf
     question: "Have you configured --checkers and --builders flags?"
     node_type: boolean
     branches:
-      - condition: "answer=true"
+      - condition: "parallel_flags_set=true"
         next: fine_tune_terminal
-      - condition: "answer=false"
+      - condition: "parallel_flags_set=false"
         next: enable_parallel_terminal
   - id: module_resolution_check
     question: "Does your projects tsconfig use moduleResolution: node?"
     node_type: boolean
     branches:
-      - condition: "answer=true"
+      - condition: "uses_module_resolution_node=true"
         next: module_res_fix_terminal
-      - condition: "answer=false"
+      - condition: "uses_module_resolution_node=false"
         next: target_check
   - id: target_check
     question: "Does your project target ES5 or ES3?"
     node_type: boolean
     branches:
-      - condition: "answer=true"
+      - condition: "targets_legacy_es=true"
         next: target_fix_terminal
-      - condition: "answer=false"
+      - condition: "targets_legacy_es=false"
         next: esm_check
   - id: esm_check
     question: "Is your project using ES modules (type: module in package.json) or CommonJS?"
     node_type: boolean
     branches:
-      - condition: "answer=esm"
+      - condition: "module_system=esm"
         next: esm_ready_terminal
-      - condition: "answer=cjs"
+      - condition: "module_system=cjs"
         next: cjs_ready_terminal
   - id: phased_migration_terminal
     terminal:
@@ -178,33 +178,33 @@ nodes:
     question: "Is the implicit any error on a function parameter or a variable declaration?"
     node_type: boolean
     branches:
-      - condition: "answer=parameter"
+      - condition: "implicit_any_location=parameter"
         next: param_any_terminal
-      - condition: "answer=variable"
+      - condition: "implicit_any_location=variable"
         next: variable_any_terminal
   - id: fix_null_check
     question: "Is the nullable value from an external API/call or from internal logic?"
     node_type: boolean
     branches:
-      - condition: "answer=external"
+      - condition: "null_source=external"
         next: external_null_terminal
-      - condition: "answer=internal"
+      - condition: "null_source=internal"
         next: internal_null_terminal
   - id: fix_function_types
     question: "Are you passing a callback with more specific parameter types than expected?"
     node_type: boolean
     branches:
-      - condition: "answer=true"
+      - condition: "has_bivariant_callback=true"
         next: bivariant_hack_terminal
-      - condition: "answer=false"
+      - condition: "has_bivariant_callback=false"
         next: annotate_callback_terminal
   - id: fix_property_init
     question: "Does the property get assigned in the constructor or via dependency injection?"
     node_type: boolean
     branches:
-      - condition: "answer=constructor"
+      - condition: "property_init_location=constructor"
         next: assign_in_constructor_terminal
-      - condition: "answer=di"
+      - condition: "property_init_location=di"
         next: definite_assignment_terminal
   - id: param_any_terminal
     terminal:

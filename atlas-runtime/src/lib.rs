@@ -62,7 +62,7 @@ impl Runtime {
     pub fn solve<'a>(&'a self, bundle_name: &str, query: &str) -> Result<SolveResult<'a>, anyhow::Error> {
         let bundle = self.bundles.get(bundle_name)
             .ok_or_else(|| anyhow::anyhow!("Bundle '{}' not loaded", bundle_name))?;
-        let q = query.to_lowercase();
+        let q = query.to_lowercase().replace(' ', "_").replace('-', "_");
 
         log::debug!("Solving query '{}' against bundle '{}'", query, bundle_name);
 

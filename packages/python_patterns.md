@@ -7,11 +7,11 @@ purpose: Document idiomatic Python patterns for production systems — typing, d
 problem_solved: Provides a reference for Python's dynamic typing, data-model protocols, async event loop, and packaging conventions, reducing footguns around mutability, import cycles, and packaging metadata.
 install: pip install pydantic pytest
 dependencies:
-  - pydantic
-  - pytest
+  - package:pydantic
+  - package:pytest
 concepts:
   - name: Python Ecosystem
-    id: "Python Ecosystem"
+    id: concept:domain/python-ecosystem
     description: The broader Python language, standard library, tooling, and community ecosystem these patterns operate within.
   - name: Dataclasses
     id: concept:python/dataclasses
@@ -158,15 +158,15 @@ uses:
   - concept:python/async
   - concept:python/context-managers
   - concept:python/venv
-part_of: "Python Ecosystem"
+part_of: concept:domain/python-ecosystem
 depends_on:
   - package:typescript/nextjs
 solves:
-  - idiomatic, low-boilerplate Python for data and backend services
+  - problem:python-idiomatic-backend
 alternatives:
-  - Ruff + mypy linters
-  - Poetry for packaging
-  - UV for dependency management
+  - package:ruff-mypy
+  - package:poetry
+  - package:uv
 ---
 # Python Engineering Patterns
 

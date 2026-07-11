@@ -55,7 +55,12 @@ impl Reasoner for TemplateReasoner {
         
         // Knowledge nodes
         if !ctx.nodes.is_empty() {
-            answer.push_str(&format!("### Matched Knowledge ({} of {})\n\n", ctx.nodes.len(), ctx.total_matches));
+            let total = ctx.total_matches;
+            if total > 0 {
+                answer.push_str(&format!("### Matched Knowledge ({} of {} exact)\n\n", ctx.nodes.len(), total));
+            } else {
+                answer.push_str(&format!("### Matched Knowledge ({} nodes, embedding match)\n\n", ctx.nodes.len()));
+            }
             for node in ctx.nodes {
                 let kind = format!("{:?}", node.kind);
                 answer.push_str(&format!("**{}** [{}]\n", node.name, kind));

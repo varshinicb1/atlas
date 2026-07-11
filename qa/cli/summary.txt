@@ -1,0 +1,11 @@
+
+M01_empty	EC=1	JSON_OK	PANIC=False	compile empty.md --out o1.atlas --json
+M02_nofront	EC=1	JSON_OK	PANIC=False	compile nofront.md --out o2.atlas --json
+M03_brokenfm	EC=1	JSON_OK	PANIC=False	compile brokenfm.md --out o3.atlas --json
+M04_dup	EC=1	JSON_OK	PANIC=False	compile dupnodes.md --out o4.atlas --json
+M05_utf	EC=1	JSON_OK	PANIC=False	compile brokenutf.md --out o5.atlas --json
+M06_huge	EC=1	JSON_OK	PANIC=False	compile huge.md --out o6.atlas --json
+M07_nested	EC=1	JSON_OK	PANIC=False	compile nested.md --out o7.atlas --json
+M08_onlyfm	EC=0	JSON_OK	PANIC=	compile onlyfm.md --out o8.atlas --json
+M09_badedge	EC=0	JSON_OK	PANIC=	compile badedge.md --out o9.atlas --json
+M10_garb	EC=1	JSON_OK	PANIC=False	compile garbage.md --out o10.atlas --json

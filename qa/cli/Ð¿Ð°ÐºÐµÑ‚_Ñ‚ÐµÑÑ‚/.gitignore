@@ -1,0 +1,7 @@
+# Atlas build artifacts
+*.atlas
+*.ir.json
+
+# Python
+__pycache__/
+*.egg-info/

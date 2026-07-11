@@ -7,10 +7,10 @@ purpose: Document idiomatic Go patterns for concurrent, networked services — g
 problem_solved: Provides a reference for Go's composition-over-inheritance model, explicit error handling, and CSP-style concurrency, reducing deadlocks, goroutine leaks, and nil-interface panics.
 install: go get github.com/spf13/cobra
 dependencies:
-  - github.com/spf13/cobra
+  - package:go/cobra
 concepts:
   - name: Go Ecosystem
-    id: "Go Ecosystem"
+    id: concept:domain/go-ecosystem
     description: The broader Go language, toolchain, and module ecosystem these patterns operate within.
   - name: Goroutines
     id: concept:go/goroutines
@@ -149,15 +149,15 @@ uses:
   - concept:go/channels
   - concept:go/interfaces
   - concept:go/context
-part_of: "Go Ecosystem"
+part_of: concept:domain/go-ecosystem
 depends_on:
   - package:docker/kubernetes
 solves:
-  - concurrent, low-latency network services with explicit error control
+  - problem:concurrent-network-services
 alternatives:
-  - Rust for no-GC latency
-  - Python for rapid development
-  - Java for the JVM ecosystem
+  - package:rust/no-gc-latency
+  - package:python/rapid-dev
+  - package:java/ecosystem
 ---
 # Go Engineering Patterns
 

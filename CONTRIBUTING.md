@@ -103,7 +103,7 @@ Open an issue with:
 
 ## Security
 
-Found a vulnerability? **Do not open a public issue.** Email `security@atlas.sh` or use GitHub's private vulnerability reporting.
+Found a vulnerability? **Do not open a public issue.** Report it at https://github.com/varshinicb1/atlas/issues or use GitHub's private vulnerability reporting.
 
 ## Code of Conduct
 

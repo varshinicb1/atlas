@@ -44,18 +44,19 @@ async function withRateLimit(
   apiKey: string | null,
   fn: () => Promise<Response>
 ): Promise<Response> {
-  if (!apiKey) return fn();
-  const rl = await stub.rateLimitCheck(apiKey);
+  const rl = await stub.rateLimitCheck(apiKey || "__anonymous__");
   if (rl.limited) {
     const resp = errorResponse("Rate limit exceeded. Max 60 requests/minute per API key.", 429);
     resp.headers.set("X-RateLimit-Limit", String(rl.limit));
     resp.headers.set("X-RateLimit-Remaining", "0");
+    resp.headers.set("X-RateLimit-Reset", String(rl.reset_at));
     return resp;
   }
   const resp = await fn();
   if (resp instanceof Response) {
     resp.headers.set("X-RateLimit-Limit", String(rl.limit));
     resp.headers.set("X-RateLimit-Remaining", String(rl.remaining));
+    resp.headers.set("X-RateLimit-Reset", String(rl.reset_at));
   }
   return resp;
 }
@@ -100,13 +101,20 @@ async function requireAuth(
   if (!apiKey) throw new Error("API key required");
   const raw = await env.PACKAGES.get(`apikey:${apiKey}`);
   if (!raw) throw new Error("Invalid API key");
-  const auth = JSON.parse(raw);
+  let auth: { org: string; role: string; last_used?: string | null; expires_at?: string | null };
+  try {
+    auth = JSON.parse(raw);
+  } catch {
+    throw new Error("Invalid API key");
+  }
   if (auth.expires_at && new Date(auth.expires_at).getTime() < Date.now()) {
     throw new Error("API key has expired.");
   }
   if (opts.admin && auth.role !== "admin") {
     throw new Error("Admin access required");
   }
+  const updated = { ...auth, last_used: new Date().toISOString() };
+  await env.PACKAGES.put(`apikey:${apiKey}`, JSON.stringify(updated));
   return auth;
 }
 
@@ -131,9 +139,12 @@ export default {
     try {
       if (path === "/api/v1/admin/migrate-org" && request.method === "POST") {
         const auth = await requireAuth(env, request, { admin: true });
-        const body = await request.json() as { fromOrg: string | null; toOrg: string };
-        const result = await stub.migrateOrg(body.fromOrg ?? null, body.toOrg);
-        return jsonResponse(result);
+        const apiKey = getApiKey(request);
+        return await withRateLimit(stub, apiKey, async () => {
+          const body = await request.json() as { fromOrg: string | null; toOrg: string };
+          const result = await stub.migrateOrg(body.fromOrg ?? null, body.toOrg, auth);
+          return jsonResponse(result);
+        });
       }
 
       if (path === "/health") {
@@ -152,41 +163,72 @@ export default {
 
       if (path === "/api/v1/packages" && request.method === "GET") {
         const apiKey = getApiKey(request);
-        let org: string | undefined;
-        if (apiKey) {
-          try {
-            const raw = await env.PACKAGES.get(`apikey:${apiKey}`);
-            if (raw) org = JSON.parse(raw).org;
-          } catch { /* public access */ }
-        }
-        const packages = await stub.listPackages(org);
-        return jsonResponse(packages);
+        return await withRateLimit(stub, apiKey, async () => {
+          let org: string | undefined;
+          if (apiKey) {
+            try {
+              const raw = await env.PACKAGES.get(`apikey:${apiKey}`);
+              if (raw) org = JSON.parse(raw).org;
+            } catch { org = ""; }
+            if (org === undefined) org = "";
+          } else {
+            org = "";
+          }
+          const packages = await stub.listPackages(org);
+          return jsonResponse(packages);
+        });
       }
 
       const versionSnapshotMatch = path.match(/^\/api\/v1\/packages\/(.+?)\/versions\/([^/]+)$/);
       if (versionSnapshotMatch && request.method === "GET") {
-        const name = decodeURIComponent(versionSnapshotMatch[1]);
-        const version = decodeURIComponent(versionSnapshotMatch[2]);
-        const snap = await stub.getPackageVersion(name, version);
-        if (!snap) return errorResponse("Version not found", 404);
-        return jsonResponse(snap);
+        const apiKey = getApiKey(request);
+        return await withRateLimit(stub, apiKey, async () => {
+          const name = decodeURIComponent(versionSnapshotMatch[1]);
+          const version = decodeURIComponent(versionSnapshotMatch[2]);
+          const pkg = await stub.getPackage(name);
+          if (!pkg) return errorResponse("Package not found", 404);
+          if (pkg.metadata.org) {
+            let auth: { org: string };
+            try { auth = await requireAuth(env, request); } catch { return errorResponse("Authentication required to access this package.", 401); }
+            if (auth.org !== pkg.metadata.org) return errorResponse("Package belongs to a different organization.", 403);
+          }
+          const snap = await stub.getPackageVersion(name, version);
+          if (!snap) return errorResponse("Version not found", 404);
+          return jsonResponse(snap);
+        });
       }
 
       const versionsListMatch = path.match(/^\/api\/v1\/packages\/(.+?)\/versions$/);
       if (versionsListMatch && request.method === "GET") {
-        const name = decodeURIComponent(versionsListMatch[1]);
-        const result = await stub.getPackageVersions(name);
-        if (!result) return errorResponse("Package not found", 404);
-        return jsonResponse(result);
+        const apiKey = getApiKey(request);
+        return await withRateLimit(stub, apiKey, async () => {
+          const name = decodeURIComponent(versionsListMatch[1]);
+          const pkg = await stub.getPackage(name);
+          if (!pkg) return errorResponse("Package not found", 404);
+          if (pkg.metadata.org) {
+            let auth: { org: string };
+            try { auth = await requireAuth(env, request); } catch { return errorResponse("Authentication required to access this package.", 401); }
+            if (auth.org !== pkg.metadata.org) return errorResponse("Package belongs to a different organization.", 403);
+          }
+          const result = await stub.getPackageVersions(name);
+          if (!result) return errorResponse("Package not found", 404);
+          return jsonResponse(result);
+        });
       }
 
       const pkgMatch = path.match(/^\/api\/v1\/packages\/(.+)$/);
       if (pkgMatch && request.method === "GET") {
-        const name = decodeURIComponent(pkgMatch[1]);
         const apiKey = getApiKey(request);
-        return withRateLimit(stub, apiKey, async () => {
+        return await withRateLimit(stub, apiKey, async () => {
+          const name = decodeURIComponent(pkgMatch[1]);
+          if (!name.match(/^[a-z0-9_-]+$/)) return errorResponse("Invalid package name.", 400);
           const pkg = await stub.getPackage(name);
           if (!pkg) return errorResponse("Package not found", 404);
+          if (pkg.metadata.org) {
+            let auth: { org: string };
+            try { auth = await requireAuth(env, request); } catch { return errorResponse("Authentication required to access this package.", 401); }
+            if (auth.org !== pkg.metadata.org) return errorResponse("Package belongs to a different organization.", 403);
+          }
           const count = await stub.incrementDownload(name);
           pkg.metadata.download_count = count;
           return jsonResponse(pkg);
@@ -196,8 +238,12 @@ export default {
       if (pkgMatch && request.method === "DELETE" && !path.includes("/versions")) {
         const auth = await requireAuth(env, request, { admin: true });
         const name = decodeURIComponent(pkgMatch[1]);
+        if (!name.match(/^[a-z0-9_-]+$/)) return errorResponse("Invalid package name.", 400);
         const result = await stub.deletePackage(name, auth);
         return jsonResponse(result);
+      }
+      if (pkgMatch && !path.includes("/versions")) {
+        return errorResponse("Method not allowed", 405);
       }
 
       if (path === "/api/v1/search" && request.method === "GET") {
@@ -205,15 +251,20 @@ export default {
         if (!query) return jsonResponse({ results: [], total: 0 });
         const limit = Math.min(parseInt(url.searchParams.get("limit") || "20"), 100);
         const apiKey = getApiKey(request);
-        let org: string | undefined;
-        if (apiKey) {
-          try {
-            const raw = await env.PACKAGES.get(`apikey:${apiKey}`);
-            if (raw) org = JSON.parse(raw).org;
-          } catch { /* public */ }
-        }
-        const results = await stub.searchPackages(query, limit, org);
-        return jsonResponse({ results, total: results.length });
+        return await withRateLimit(stub, apiKey, async () => {
+          let org: string | undefined;
+          if (apiKey) {
+            try {
+              const raw = await env.PACKAGES.get(`apikey:${apiKey}`);
+              if (raw) org = JSON.parse(raw).org;
+            } catch { org = ""; }
+            if (org === undefined) org = "";
+          } else {
+            org = "";
+          }
+          const results = await stub.searchPackages(query, limit, org);
+          return jsonResponse({ results, total: results.length });
+        });
       }
 
       if (path === "/api/v1/publish" && request.method === "POST") {
@@ -223,10 +274,15 @@ export default {
         }
         const apiKey = getApiKey(request);
 
-        return withRateLimit(stub, apiKey, async () => {
-          const body = await request.json() as PublishInput;
+        return await withRateLimit(stub, apiKey, async () => {
+          let body: PublishInput;
+          try {
+            body = await request.json() as PublishInput;
+          } catch {
+            return errorResponse("Malformed JSON body.", 400);
+          }
           const ip = getClientIp(request);
-          const result = await stub.publishPackage(body, auth, ip);
+          const result = await stub.publishPackage(body, auth, ip, apiKey || undefined);
           return jsonResponse(result, result.replaced ? 200 : 201);
         });
       }
@@ -237,106 +293,164 @@ export default {
 
       if (path.startsWith("/api/v1/org/stats") && request.method === "GET") {
         const auth = await requireAuth(env, request);
-        const stats = await stub.getOrgStats(auth.org);
-        return jsonResponse(stats);
+        const apiKey = getApiKey(request);
+        return await withRateLimit(stub, apiKey, async () => {
+          const stats = await stub.getOrgStats(auth.org);
+          return jsonResponse(stats);
+        });
       }
 
       if (path.startsWith("/api/v1/org/audit") && request.method === "GET") {
-        await requireAuth(env, request, { admin: true });
-        const limit = Math.min(parseInt(url.searchParams.get("limit") || "50"), 200);
-        const entries: AuditEntry[] = [];
-        const list = await env.PACKAGES.list({ prefix: "audit:", limit });
-        for (const key of list.keys) {
-          const val = await env.PACKAGES.get(key.name);
-          if (val) entries.push(JSON.parse(val));
-        }
-        entries.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
-        return jsonResponse({ entries, total: entries.length });
+        const auth = await requireAuth(env, request, { admin: true });
+        const apiKey = getApiKey(request);
+        return await withRateLimit(stub, apiKey, async () => {
+          const limit = Math.min(parseInt(url.searchParams.get("limit") || "50"), 200);
+          const entries: AuditEntry[] = [];
+          const list = await env.PACKAGES.list({ prefix: "audit:", limit });
+          for (const key of list.keys) {
+            const val = await env.PACKAGES.get(key.name);
+            if (val) {
+              const entry = JSON.parse(val) as AuditEntry;
+              if (entry.org !== auth.org) continue;
+              entries.push(entry);
+            }
+          }
+          entries.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+          return jsonResponse({ entries, total: entries.length });
+        });
       }
 
       // --- Admin: API key management -------------------------------------
 
       if (path === "/api/v1/admin/keys" && request.method === "POST") {
         const auth = await requireAuth(env, request, { admin: true });
-        const body = (await request.json().catch(() => ({}))) as {
-          role?: string;
-          expires_at?: string;
-          key?: string;
-        };
-        const result = await stub.createApiKey({
-          org: auth.org,
-          role: (body.role as "admin" | "publisher" | "viewer") || "publisher",
-          expires_at: body.expires_at ?? null,
-          key: body.key,
+        const apiKey = getApiKey(request);
+        return await withRateLimit(stub, apiKey, async () => {
+          const body = (await request.json().catch(() => ({}))) as {
+            role?: string;
+            expires_at?: string;
+            key?: string;
+          };
+          const result = await stub.createApiKey({
+            org: auth.org,
+            role: (body.role as "admin" | "publisher" | "viewer") || "publisher",
+            expires_at: body.expires_at ?? null,
+            key: body.key,
+          });
+          return jsonResponse(result, 201);
         });
-        return jsonResponse(result, 201);
       }
 
       if (path === "/api/v1/admin/keys" && request.method === "GET") {
         const auth = await requireAuth(env, request, { admin: true });
-        const keys = await stub.listApiKeys(auth.org);
-        return jsonResponse({ keys });
+        const apiKey = getApiKey(request);
+        return await withRateLimit(stub, apiKey, async () => {
+          const keys = await stub.listApiKeys(auth.org);
+          return jsonResponse({ keys });
+        });
       }
 
       const keyRevokeMatch = path.match(/^\/api\/v1\/admin\/keys\/(.+)$/);
       if (keyRevokeMatch && request.method === "DELETE") {
         const auth = await requireAuth(env, request, { admin: true });
-        const targetKey = decodeURIComponent(keyRevokeMatch[1]);
-        const result = await stub.revokeApiKey(auth.org, targetKey);
-        return jsonResponse(result);
+        const apiKey = getApiKey(request);
+        return await withRateLimit(stub, apiKey, async () => {
+          const targetKey = decodeURIComponent(keyRevokeMatch[1]);
+          const result = await stub.revokeApiKey(auth.org, targetKey);
+          return jsonResponse(result);
+        });
       }
 
       // --- Admin: backup / export / import -----------------------------
 
       if (path === "/api/v1/admin/export" && request.method === "GET") {
-        await requireAuth(env, request, { admin: true });
-        const dump = await stub.exportAll();
-        return jsonResponse(dump);
+        const auth = await requireAuth(env, request, { admin: true });
+        const apiKey = getApiKey(request);
+        return await withRateLimit(stub, apiKey, async () => {
+          const dump = await stub.exportAll(auth);
+          return jsonResponse(dump);
+        });
       }
 
       if (path === "/api/v1/admin/import" && request.method === "POST") {
-        await requireAuth(env, request, { admin: true });
-        const body = (await request.json().catch(() => null)) as unknown;
-        const result = await stub.importAll(body as any);
-        return jsonResponse(result, 201);
+        const auth = await requireAuth(env, request, { admin: true });
+        const apiKey = getApiKey(request);
+        return await withRateLimit(stub, apiKey, async () => {
+          const body = (await request.json().catch(() => null)) as unknown;
+          const result = await stub.importAll(body as any, auth);
+          return jsonResponse(result, 201);
+        });
       }
 
       // --- Metrics ------------------------------------------------------
 
       if (path === "/metrics") {
-        const metrics = await stub.getMetrics();
-        const accept = request.headers.get("Accept") || "";
-        if (accept.includes("application/json")) {
-          return jsonResponse(metrics);
-        }
-        return new Response(prometheusMetrics(metrics), {
-          status: 200,
-          headers: {
-            "Content-Type": "text/plain; version=0.0.4",
-            "Access-Control-Allow-Origin": "*",
-          },
+        const auth = await requireAuth(env, request, { admin: true });
+        const apiKey = getApiKey(request);
+        return await withRateLimit(stub, apiKey, async () => {
+          const metrics = await stub.getMetrics();
+          const accept = request.headers.get("Accept") || "";
+          if (accept.includes("application/json")) {
+            return jsonResponse(metrics);
+          }
+          return new Response(prometheusMetrics(metrics), {
+            status: 200,
+            headers: {
+              "Content-Type": "text/plain; version=0.0.4",
+              "Access-Control-Allow-Origin": "*",
+            },
+          });
         });
       }
 
       // Legacy API paths (backward compat)
       if (path === "/api/packages" && request.method === "GET") {
-        const packages = await stub.listPackages();
-        return jsonResponse(packages);
+        const apiKey = getApiKey(request);
+        return await withRateLimit(stub, apiKey, async () => {
+          let org: string | undefined;
+          if (apiKey) {
+            try { const raw = await env.PACKAGES.get(`apikey:${apiKey}`); if (raw) org = JSON.parse(raw).org; } catch { org = ""; }
+            if (org === undefined) org = "";
+          } else {
+            org = "";
+          }
+          const packages = await stub.listPackages(org);
+          return jsonResponse(packages);
+        });
       }
 
       const legacyMatch = path.match(/^\/api\/packages\/(.+)$/);
       if (legacyMatch && request.method === "GET") {
-        const name = decodeURIComponent(legacyMatch[1]);
-        const pkg = await stub.getPackage(name);
-        if (!pkg) return errorResponse("Package not found", 404);
-        return jsonResponse(pkg);
+        const apiKey = getApiKey(request);
+        return await withRateLimit(stub, apiKey, async () => {
+          const name = decodeURIComponent(legacyMatch[1]);
+          if (!name.match(/^[a-z0-9_-]+$/)) return errorResponse("Invalid package name.", 400);
+          const pkg = await stub.getPackage(name);
+          if (!pkg) return errorResponse("Package not found", 404);
+          if (pkg.metadata.org) {
+            let auth: { org: string };
+            try { auth = await requireAuth(env, request); } catch { return errorResponse("Authentication required to access this package.", 401); }
+            if (auth.org !== pkg.metadata.org) return errorResponse("Package belongs to a different organization.", 403);
+          }
+          return jsonResponse(pkg);
+        });
       }
 
       if (path === "/api/search" && request.method === "GET") {
         const query = url.searchParams.get("q") || "";
         const limit = Math.min(parseInt(url.searchParams.get("limit") || "20"), 100);
-        const results = await stub.searchPackages(query, limit);
-        return jsonResponse({ results, total: results.length });
+        const apiKey = getApiKey(request);
+        return await withRateLimit(stub, apiKey, async () => {
+          let org: string | undefined;
+          if (apiKey) {
+            try { const raw = await env.PACKAGES.get(`apikey:${apiKey}`); if (raw) org = JSON.parse(raw).org; } catch { org = ""; }
+            if (org === undefined) org = "";
+          } else {
+            org = "";
+          }
+          const results = await stub.searchPackages(query, limit, org);
+          return jsonResponse({ results, total: results.length });
+        });
       }
 
       if (path === "/api/publish" && request.method === "POST") {
@@ -348,12 +462,17 @@ export default {
         if (auth.role === "viewer") {
           return errorResponse("Viewers cannot publish packages.", 403);
         }
-        const body = await request.json() as PublishInput;
-        const ip = getClientIp(request);
-        const result = await stub.publishPackage(body, auth, ip);
-        return jsonResponse(result, result.replaced ? 200 : 201);
+        return await withRateLimit(stub, apiKey, async () => {
+          const body = await request.json() as PublishInput;
+          const ip = getClientIp(request);
+          const result = await stub.publishPackage(body, auth, ip, apiKey);
+          return jsonResponse(result, result.replaced ? 200 : 201);
+        });
       }
 
+      if (path.startsWith("/api/")) {
+        return errorResponse("Not found", 404);
+      }
       return errorResponse("Not found", 404);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Internal error";
@@ -369,10 +488,20 @@ export default {
         msg.includes("admins") ||
         msg.includes("Viewers") ||
         msg.includes("Admin") ||
-        msg.includes("role") ||
         msg.includes("permission")
       ) return errorResponse(msg, 403);
-      if (msg.includes("Package name") || msg.includes("required")) return errorResponse(msg, 400);
+      if (
+        msg.includes("Package name") ||
+        msg.includes("required") ||
+        msg.includes("Invalid role") ||
+        msg.includes("Invalid export dump") ||
+        msg.includes("expires_at") ||
+        msg.includes("Malformed JSON") ||
+        msg.includes("Invalid package name") ||
+        msg.includes("Version") ||
+        msg.includes("File") ||
+        msg.includes("Tags")
+      ) return errorResponse(msg, 400);
       if (msg.includes("not found")) return errorResponse(msg, 404);
       return errorResponse(msg, 500);
     }

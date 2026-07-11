@@ -7,11 +7,11 @@ purpose: Document idiomatic React 19 patterns — hooks, Server Components, Susp
 problem_solved: Provides a reference for React's declarative rendering model, the hooks lifecycle, concurrent features, and the server/client split, reducing re-render bugs, effect misuse, and hydration mismatches.
 install: npm install react@19 react-dom@19
 dependencies:
-  - react@19
-  - react-dom@19
+  - package:react
+  - package:react-dom
 concepts:
   - name: Web Platform
-    id: "Web Platform"
+    id: concept:domain/web-platform
     description: The broader web platform — browsers, standards, and runtime environments that React targets.
   - name: Hooks
     id: concept:react/hooks
@@ -151,16 +151,16 @@ uses:
   - concept:react/suspense
   - concept:react/concurrent
   - concept:react/state
-part_of: "Web Platform"
+part_of: concept:domain/web-platform
 depends_on:
   - package:typescript/nextjs
   - package:typescript/7_migration
 solves:
-  - building responsive, declarative user interfaces with predictable state
+  - problem:declarative-ui
 alternatives:
-  - SolidJS for fine-grained reactivity
-  - Svelte for compiler-driven reactivity
-  - Vue for template-based components
+  - package:solidjs
+  - package:svelte
+  - package:vue
 ---
 # React 19 Patterns
 
