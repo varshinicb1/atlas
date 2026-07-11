@@ -1,0 +1,96 @@
+{
+  "generated_at": "2026-07-11T03:23:51+0530",
+  "atlas_version": "atlas 0.1.0",
+  "measured_on_machine": {
+    "os": "Windows 11",
+    "machine": "AMD64",
+    "processor": "Intel64 Family 6 Model 186 Stepping 2, GenuineIntel",
+    "cpu_logical_count": 16,
+    "ram_gb": 16.0,
+    "python": "3.14.3"
+  },
+  "sample_size": 1000,
+  "warmup_uncounted": 10,
+  "timing_includes": [
+    "OS process spawn",
+    "Rust binary startup + std init",
+    ".atlas file read + deserialize",
+    "solve/decide work"
+  ],
+  "timing_caveat": "End-to-end CLI latency per invocation (subprocess.run). NOT in-process library latency. Process-spawn overhead dominates and is intentionally included for honesty.",
+  "compile": {
+    "solve_bundle_source": "packages\\rust_patterns.md",
+    "solve_bundle_bytes": 7509,
+    "solve_compile_ms": 17.301,
+    "solve_compile_meta": {
+      "decision_trees": 0,
+      "edges": 39,
+      "nodes": 20,
+      "output": "C:\\Users\\varsh\\OneDrive\\Documents\\3Atlas\\benchmarks\\bench_solve.atlas"
+    },
+    "decide_bundle_sources": [
+      "packages\\flutter_core.md",
+      "packages\\decisions\\flutter_core.yaml"
+    ],
+    "decide_bundle_bytes": 7951,
+    "decide_compile_ms": 17.783,
+    "decide_compile_meta": {
+      "decision_trees": 2,
+      "edges": 27,
+      "nodes": 18,
+      "output": "C:\\Users\\varsh\\OneDrive\\Documents\\3Atlas\\benchmarks\\bench_decide.atlas"
+    }
+  },
+  "solve": {
+    "command": "atlas solve --bundle bench_solve.atlas <query> --json",
+    "query_set": [
+      "error handling",
+      "Result type in Rust",
+      "async programming with tokio",
+      "serde serialization",
+      "ownership and borrowing",
+      "lifetimes in Rust",
+      "traits and generics",
+      "pattern matching",
+      "smart pointers Box Arc",
+      "Option and the ? operator"
+    ],
+    "latency_ms": {
+      "n": 1000,
+      "min_ms": 10.8132,
+      "mean_ms": 14.2433,
+      "median_ms": 12.835,
+      "p95_ms": 20.9311,
+      "p99_ms": 28.1318,
+      "max_ms": 113.0781,
+      "stdev_ms": 4.7971
+    }
+  },
+  "decide": {
+    "command": "atlas decide --bundle bench_decide.atlas <query> -c answer=false --json",
+    "query_set": [
+      "flutter widget for a list",
+      "widget choice for a button",
+      "ui for a settings screen",
+      "flutter state management",
+      "flutter ui for a form"
+    ],
+    "latency_ms": {
+      "n": 1000,
+      "min_ms": 12.7625,
+      "mean_ms": 17.6848,
+      "median_ms": 16.4759,
+      "p95_ms": 24.5405,
+      "p99_ms": 32.7568,
+      "max_ms": 56.8994,
+      "stdev_ms": 4.0003
+    },
+    "note": "Published flutter decision trees require a single consistent `answer` context along the chosen path to reach a terminal. answer=false reaches the StatelessWidget terminal reliably."
+  },
+  "determinism": {
+    "query": "error handling",
+    "runs": 100,
+    "identical_output": true,
+    "method": "byte-for-byte comparison of --json stdout"
+  }
+}

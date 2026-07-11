@@ -59,3 +59,98 @@ pub struct EmbeddingIndex {
     pub embeddings: Vec<Embedding>,
     pub node_ids: Vec<String>,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn norm(v: &[f32]) -> f32 {
+        v.iter().map(|x| x * x).sum::<f32>().sqrt()
+    }
+
+    #[test]
+    fn test_compute_shape_and_count() {
+        let e = compute(&["a b c".to_string(), "x y".to_string()], 64);
+        assert_eq!(e.len(), 2);
+        assert_eq!(e[0].len(), 64);
+        assert_eq!(e[1].len(), 64);
+    }
+
+    #[test]
+    fn test_determinism() {
+        let a = compute(&["hello world foo".to_string()], 128);
+        let b = compute(&["hello world foo".to_string()], 128);
+        assert_eq!(a, b);
+    }
+
+    #[test]
+    fn test_normalization() {
+        let e = compute(&["the quick brown fox jumps".to_string()], 128);
+        assert!((norm(&e[0]) - 1.0).abs() < 1e-5, "norm = {}", norm(&e[0]));
+    }
+
+    #[test]
+    fn test_empty_text_normalizes_to_zero() {
+        let e = compute(&["".to_string()], 128);
+        assert!(norm(&e[0]).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_cosine_similarity_identical() {
+        let e = compute(&["hello world".to_string()], 128);
+        assert!((cosine_similarity(&e[0], &e[0]) - 1.0).abs() < 1e-5);
+    }
+
+    #[test]
+    fn test_cosine_similarity_orthogonal_clamped() {
+        let a = vec![1.0f32, 0.0, 0.0];
+        let b = vec![0.0f32, 1.0, 0.0];
+        assert!((cosine_similarity(&a, &b) - 0.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_nearest_returns_best_match() {
+        let embs = compute(
+            &["alpha beta gamma".to_string(), "delta epsilon zeta".to_string()],
+            128,
+        );
+        let q = compute(&["alpha beta gamma".to_string()], 128);
+        let res = nearest(&embs, &q[0], 1);
+        assert_eq!(res.len(), 1);
+        assert_eq!(res[0].0, 0);
+        assert!(res[0].1 >= 0.0);
+    }
+
+    #[test]
+    fn test_nearest_top_k_and_threshold() {
+        let embs = compute(
+            &[
+                "alpha beta gamma".to_string(),
+                "totally unrelated words here".to_string(),
+            ],
+            128,
+        );
+        let q = compute(&["alpha beta gamma".to_string()], 128);
+        let res = nearest_with_threshold(&embs, &q[0], 5, 0.99);
+        assert_eq!(res.len(), 1);
+        assert_eq!(res[0].0, 0);
+        assert!(res[0].1 > 0.99);
+    }
+
+    #[test]
+    fn test_nearest_empty() {
+        let embs: Vec<Embedding> = Vec::new();
+        let q = compute(&["x".to_string()], 128);
+        assert!(nearest(&embs, &q[0], 3).is_empty());
+    }
+
+    #[test]
+    fn test_embedding_index_struct() {
+        let idx = EmbeddingIndex {
+            embeddings: vec![vec![0.0; 4]],
+            node_ids: vec!["n1".into()],
+        };
+        assert_eq!(idx.embeddings.len(), 1);
+        assert_eq!(idx.node_ids[0], "n1");
+    }
+}

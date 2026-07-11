@@ -34,3 +34,8 @@ wrangler.toml.bak
 # Logs
 *.log
 .wrangler/
+
+# Python cache
+__pycache__/
+*.pyc
+*.egg-info/

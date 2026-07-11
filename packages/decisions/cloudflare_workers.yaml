@@ -1,0 +1,79 @@
+id: cf_storage_choice
+trigger:
+  intent: choose_solution
+  domain: edge
+  tags: [cloudflare, storage, workers]
+root: data_shape_node
+nodes:
+  - id: data_shape_node
+    question: "What kind of data are you storing at the edge?"
+    node_type: categorical
+    branches:
+      - condition: "data=config_flags"
+        next: consistency_node
+      - condition: "data=relational"
+        next: d1_terminal
+      - condition: "data=files"
+        next: r2_terminal
+      - condition: "data=stateful_coord"
+        next: do_terminal
+  - id: consistency_node
+    question: "Do you need read-after-write consistency across regions?"
+    node_type: boolean
+    branches:
+      - condition: "answer=true"
+        next: d1_terminal
+      - condition: "answer=false"
+        next: kv_terminal
+  - id: kv_terminal
+    terminal:
+      recommendation:
+        - node_id: "concept:cf/kv"
+          confidence: 0.9
+      rationale: "Use KV for config, feature flags, and cached reads. It is eventually consistent, so never rely on instant global reads."
+  - id: d1_terminal
+    terminal:
+      recommendation:
+        - node_id: "concept:cf/d1"
+          confidence: 0.9
+      rationale: "Use D1 (serverless SQLite) for relational, SQL-shaped, strongly-consistent data in single-region patterns."
+  - id: r2_terminal
+    terminal:
+      recommendation:
+        - node_id: "concept:cf/r2"
+          confidence: 0.9
+      rationale: "Use R2 for objects, assets, and large blobs — S3-compatible with zero egress fees. Bind, don't sign URLs in-code."
+  - id: do_terminal
+    terminal:
+      recommendation:
+        - node_id: "concept:cf/durable-objects"
+          confidence: 0.9
+      rationale: "Use Durable Objects for single-instance, strongly-consistent coordination (counters, queues, WebSockets, alarms)."
+---
+id: cf_handler_structure
+trigger:
+  intent: choose_solution
+  domain: edge
+  tags: [cloudflare, workers, routing]
+root: scope_node
+nodes:
+  - id: scope_node
+    question: "Is the Worker a single-purpose function or a multi-route application?"
+    node_type: boolean
+    branches:
+      - condition: "answer=single"
+        next: single_terminal
+      - condition: "answer=multi"
+        next: router_terminal
+  - id: single_terminal
+    terminal:
+      recommendation:
+        - node_id: "concept:cf/fetch-handler"
+          confidence: 0.9
+      rationale: "A single fetch handler returning a Response is enough. Use ctx.waitUntil for post-response background work."
+  - id: router_terminal
+    terminal:
+      recommendation:
+        - node_id: "concept:cf/bindings"
+          confidence: 0.8
+      rationale: "Match on request.url path/method and dispatch to handlers using env bindings. Keep within the subrequest budget."

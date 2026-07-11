@@ -115,3 +115,84 @@ impl DecisionParser {
         Ok(trees)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const TREE_YAML: &str = r#"id: my_tree
+trigger:
+  intent: choose_solution
+  domain: web
+  tags: [rust]
+root: start
+nodes:
+  - id: start
+    question: "use rust?"
+    node_type: boolean
+    branches:
+      - condition: "lang=rust"
+        next: terminal_rust
+      - condition: "lang=go"
+        next: terminal_go
+  - id: terminal_rust
+    terminal:
+      recommendation:
+        - node_id: "concept:rust"
+          confidence: 0.9
+      rationale: "Rust is good"
+      agent_instructions: "use cargo"
+  - id: terminal_go
+    terminal:
+      recommendation:
+        - node_id: "concept:go"
+          confidence: 0.7
+      rationale: "Go is simple"
+"#;
+
+    #[test]
+    fn test_parse_single_tree() {
+        let trees = DecisionParser::parse_multi(TREE_YAML).unwrap();
+        assert_eq!(trees.len(), 1);
+        let t = &trees[0];
+        assert_eq!(t.id, "my_tree");
+        assert_eq!(t.root, "start");
+        assert_eq!(t.nodes.len(), 3);
+        assert_eq!(t.trigger.tags, vec!["rust".to_string()]);
+        assert_eq!(t.trigger.intent.as_deref(), Some("choose_solution"));
+        assert_eq!(t.trigger.domain.as_deref(), Some("web"));
+
+        let start = t.nodes.iter().find(|n| n.id == "start").unwrap();
+        assert_eq!(start.branches.len(), 2);
+        assert!(start.terminal.is_none());
+
+        let rust = t.nodes.iter().find(|n| n.id == "terminal_rust").unwrap();
+        let term = rust.terminal.as_ref().unwrap();
+        assert_eq!(term.recommendation[0].node_id, "concept:rust");
+        assert!((term.recommendation[0].confidence - 0.9).abs() < 1e-6);
+        assert_eq!(term.rationale, "Rust is good");
+        assert_eq!(term.agent_instructions.as_deref(), Some("use cargo"));
+    }
+
+    #[test]
+    fn test_parse_multiple_docs() {
+        let doc_a = "id: a\nroot: r\ntrigger:\n  tags: [x]\nnodes:\n  - id: r\n    terminal:\n      recommendation: []\n      rationale: ra\n";
+        let doc_b = "id: b\nroot: s\ntrigger:\n  tags: [y]\nnodes:\n  - id: s\n    terminal:\n      recommendation: []\n      rationale: rb\n";
+        let combined = format!("{}\n---\n{}", doc_a, doc_b);
+        let trees = DecisionParser::parse_multi(&combined).unwrap();
+        assert_eq!(trees.len(), 2);
+        assert_eq!(trees[0].id, "a");
+        assert_eq!(trees[1].id, "b");
+    }
+
+    #[test]
+    fn test_parse_invalid_yaml_errors() {
+        let bad = "id: [unclosed\nroot: r\n";
+        assert!(DecisionParser::parse_multi(bad).is_err());
+    }
+
+    #[test]
+    fn test_parse_empty_returns_no_trees() {
+        assert!(DecisionParser::parse_multi("   \n  \n").unwrap().is_empty());
+    }
+}

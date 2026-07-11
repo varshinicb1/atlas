@@ -1,0 +1,109 @@
+id: python_sync_vs_async
+trigger:
+  intent: choose_solution
+  domain: backend
+  tags: [python, concurrency, async]
+root: workload_type_node
+nodes:
+  - id: workload_type_node
+    question: "Is the dominant cost of your workload I/O (network, disk, DB calls) or CPU (parsing, math, crypto)?"
+    node_type: categorical
+    branches:
+      - condition: "workload=io"
+        next: io_concurrency_node
+      - condition: "workload=cpu"
+        next: cpu_concurrency_node
+      - condition: "workload=mixed"
+        next: mixed_node
+  - id: io_concurrency_node
+    question: "Do you need to handle many concurrent connections (thousands) or just a handful?"
+    node_type: boolean
+    branches:
+      - condition: "answer=many"
+        next: async_terminal
+      - condition: "answer=few"
+        next: threads_terminal
+  - id: cpu_concurrency_node
+    question: "Can the work be split into independent chunks across processes?"
+    node_type: boolean
+    branches:
+      - condition: "answer=true"
+        next: multiprocessing_terminal
+      - condition: "answer=false"
+        next: sync_terminal
+  - id: mixed_node
+    question: "Is the I/O portion large enough to dominate latency under load?"
+    node_type: boolean
+    branches:
+      - condition: "answer=true"
+        next: async_terminal
+      - condition: "answer=false"
+        next: multiprocessing_terminal
+  - id: async_terminal
+    terminal:
+      recommendation:
+        - node_id: "concept:python/async"
+          confidence: 0.9
+        - node_id: "concept:python/event-loop"
+          confidence: 0.8
+      rationale: "Use asyncio with async-native libraries (httpx, aiohttp). Never call blocking code inside coroutines; offload with asyncio.to_thread."
+  - id: threads_terminal
+    terminal:
+      recommendation:
+        - node_id: "concept:python/context-managers"
+          confidence: 0.7
+      rationale: "A few synchronous threads with context managers are simpler than async for low concurrency. Mind the GIL for CPU work."
+  - id: multiprocessing_terminal
+    terminal:
+      recommendation:
+        - node_id: "concept:python/gil"
+          confidence: 0.85
+      rationale: "Use concurrent.futures.ProcessPoolExecutor to bypass the GIL for CPU-bound work; communicate via queues, not shared memory."
+  - id: sync_terminal
+    terminal:
+      recommendation:
+        - node_id: "concept:python/dataclasses"
+          confidence: 0.6
+      rationale: "Plain synchronous code with dataclasses is simplest when there is no concurrency need. Avoid premature complexity."
+---
+id: python_data_model_choice
+trigger:
+  intent: choose_solution
+  domain: backend
+  tags: [python, data, validation]
+root: validation_node
+nodes:
+  - id: validation_node
+    question: "Do you need runtime validation and coercion of untrusted input (API payloads, config files)?"
+    node_type: boolean
+    branches:
+      - condition: "answer=true"
+        next: pydantic_terminal
+      - condition: "answer=false"
+        next: dataclass_node
+  - id: dataclass_node
+    question: "Do you need immutability or reduced memory footprint?"
+    node_type: boolean
+    branches:
+      - condition: "answer=true"
+        next: frozen_dataclass_terminal
+      - condition: "answer=false"
+        next: plain_dataclass_terminal
+  - id: pydantic_terminal
+    terminal:
+      recommendation:
+        - node_id: "concept:python/pydantic"
+          confidence: 0.9
+      rationale: "Use Pydantic models to validate and coerce input at the boundary; it raises clear errors and infers static types."
+  - id: frozen_dataclass_terminal
+    terminal:
+      recommendation:
+        - node_id: "concept:python/dataclasses"
+          confidence: 0.85
+      rationale: "Use @dataclass(frozen=True, slots=True) for immutable, memory-efficient data; copy with dataclasses.replace()."
+  - id: plain_dataclass_terminal
+    terminal:
+      recommendation:
+        - node_id: "concept:python/dataclasses"
+          confidence: 0.8
+      rationale: "Use a plain @dataclass for internal data containers; avoid mutable default arguments (use None + init)."

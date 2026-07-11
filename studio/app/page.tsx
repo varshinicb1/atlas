@@ -1,43 +1,54 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { Suspense, useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
 import { AtlasNode, AtlasEdge, loadBundle, getNodeColor } from "./lib/api";
 
 const GraphView = dynamic(() => import("./components/GraphView"), { ssr: false });
 
-export default function Home() {
+const DEFAULT_BUNDLE = "../bundle.atlas";
+
+function HomeContent() {
   const [nodes, setNodes] = useState<AtlasNode[]>([]);
   const [edges, setEdges] = useState<AtlasEdge[]>([]);
   const [selected, setSelected] = useState<AtlasNode | null>(null);
   const [error, setError] = useState<string>("");
-  const [bundlePath, setBundlePath] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [loaded, setLoaded] = useState(false);
   const [search, setSearch] = useState("");
   const searchParams = useSearchParams();
-
-  useEffect(() => {
-    const path = searchParams.get("bundle") || "";
-    if (path) {
-      setBundlePath(path);
-      doLoad(path);
-    } else {
-      setBundlePath("../bundle.atlas");
-      doLoad("../bundle.atlas");
-    }
-  }, []);
+  const [bundlePath, setBundlePath] = useState(
+    () => searchParams.get("bundle") || DEFAULT_BUNDLE
+  );
 
   const doLoad = useCallback(async (path: string) => {
     setError("");
+    setLoading(true);
     try {
       const ir = await loadBundle(path);
       setNodes(ir.nodes);
       setEdges(ir.edges);
       setSelected(null);
+      setLoaded(true);
     } catch (err: unknown) {
+      setNodes([]);
+      setEdges([]);
+      setSelected(null);
+      setLoaded(false);
       setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setLoading(false);
     }
   }, []);
+
+  useEffect(() => {
+    const path = searchParams.get("bundle") || DEFAULT_BUNDLE;
+    // Data fetch on mount / when the ?bundle= param changes. The state
+    // updates happen asynchronously inside loadBundle, not synchronously here.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    doLoad(path);
+  }, [searchParams, doLoad]);
 
   const handleLoad = useCallback(() => {
     if (bundlePath) {
@@ -66,6 +77,8 @@ export default function Home() {
       )
     : edges;
 
+  const hasGraph = loaded && nodes.length > 0;
+
   return (
     <div style={{ display: "flex", height: "100vh", fontFamily: "system-ui, sans-serif" }}>
       <div
@@ -86,6 +99,9 @@ export default function Home() {
             type="text"
             value={bundlePath}
             onChange={(e) => setBundlePath(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") handleLoad();
+            }}
             placeholder="Path to .atlas file"
             style={{
               width: "100%",
@@ -99,18 +115,19 @@ export default function Home() {
           />
           <button
             onClick={handleLoad}
+            disabled={loading || !bundlePath}
             style={{
               width: "100%",
               padding: "6px 12px",
               fontSize: 13,
-              background: "#6366f1",
+              background: loading || !bundlePath ? "#a5b4fc" : "#6366f1",
               color: "white",
               border: "none",
               borderRadius: 6,
-              cursor: "pointer",
+              cursor: loading || !bundlePath ? "default" : "pointer",
             }}
           >
-            Load
+            {loading ? "Loading…" : "Load"}
           </button>
           {error && (
             <div style={{ marginTop: 8, fontSize: 12, color: "#ef4444" }}>
@@ -127,6 +144,7 @@ export default function Home() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search nodes..."
+            disabled={!hasGraph}
             style={{
               width: "100%",
               padding: "6px 10px",
@@ -160,15 +178,38 @@ export default function Home() {
               <div style={{ fontSize: 11, color: "#64748b" }}>{n.kind}</div>
             </div>
           ))}
+          {hasGraph && search && filteredNodes.length === 0 && (
+            <div style={{ padding: "8px 10px", fontSize: 12, color: "#94a3b8" }}>
+              No nodes match &ldquo;{search}&rdquo;.
+            </div>
+          )}
         </div>
       </div>
 
       <div style={{ flex: 1, position: "relative" }}>
-        <GraphView
-          atlasNodes={filteredNodes}
-          atlasEdges={filteredEdges}
-          onNodeClick={setSelected}
-        />
+        {loading ? (
+          <CenteredMessage>Loading bundle…</CenteredMessage>
+        ) : error ? (
+          <CenteredMessage tone="error">
+            Failed to load bundle.
+            <div style={{ fontSize: 12, marginTop: 6, color: "#94a3b8", maxWidth: 420 }}>
+              {error}
+            </div>
+          </CenteredMessage>
+        ) : hasGraph ? (
+          <GraphView
+            atlasNodes={filteredNodes}
+            atlasEdges={filteredEdges}
+            onNodeClick={setSelected}
+          />
+        ) : (
+          <CenteredMessage>
+            No knowledge loaded.
+            <div style={{ fontSize: 12, marginTop: 6, color: "#94a3b8" }}>
+              Enter a path to a compiled <code>.atlas</code> bundle and press Load.
+            </div>
+          </CenteredMessage>
+        )}
       </div>
 
       {selected && (
@@ -230,5 +271,40 @@ export default function Home() {
         </div>
       )}
     </div>
+  );
+}
+
+function CenteredMessage({
+  children,
+  tone,
+}: {
+  children: React.ReactNode;
+  tone?: "error";
+}) {
+  return (
+    <div
+      style={{
+        position: "absolute",
+        inset: 0,
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+        textAlign: "center",
+        color: tone === "error" ? "#ef4444" : "#64748b",
+        fontSize: 14,
+        padding: 24,
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
+export default function Home() {
+  return (
+    <Suspense fallback={null}>
+      <HomeContent />
+    </Suspense>
   );
 }

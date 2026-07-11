@@ -1,8 +1,0 @@
-pyproject.toml
-atlas_sdk/__init__.py
-atlas_sdk/client.py
-atlas_sdk/models.py
-atlas_sdk.egg-info/PKG-INFO
-atlas_sdk.egg-info/SOURCES.txt
-atlas_sdk.egg-info/dependency_links.txt
-atlas_sdk.egg-info/top_level.txt

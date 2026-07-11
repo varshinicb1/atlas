@@ -27,7 +27,11 @@ jobs:
           for src in packages/*.md; do
             name=$(basename "$src" .md)
             echo "=== Compiling $name ==="
-            ./target/release/atlas compile "$src" --out "target/$name.atlas" --json || exit 1
+            if [ -f "packages/decisions/$name.yaml" ]; then
+              ./target/release/atlas compile "$src" "packages/decisions/$name.yaml" --out "target/$name.atlas" --json || exit 1
+            else
+              ./target/release/atlas compile "$src" --out "target/$name.atlas" --json || exit 1
+            fi
           done
       - name: Upload compiled bundles
         uses: actions/upload-artifact@v4
@@ -62,12 +66,71 @@ jobs:
           test -f website/js/search.js
           echo "Website assets OK"
 
-  registry-check:
+  registry-test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Check registry code
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Registry tests + typecheck
+        working-directory: registry
         run: |
-          test -f registry/src/index.ts
-          test -f registry/src/registry.ts
-          echo "Registry code OK"
+          npm install
+          npx tsc --noEmit -p tsconfig.json
+          npm test
+
+  python-sdk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Python SDK tests
+        working-directory: python
+        run: |
+          python -m pip install --upgrade pip pytest
+          python -m pytest -v
+
+  mcp-server:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: MCP server tests + build
+        working-directory: mcp-server
+        run: |
+          npm install
+          npm test
+          npm run build
+
+  vscode-extension:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: VS Code extension compile + tests
+        working-directory: vscode-atlas
+        run: |
+          npm install
+          npm run compile
+          npm test
+
+  studio:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Studio build + lint
+        working-directory: studio
+        run: |
+          npm install
+          npm run lint
+          npm run build

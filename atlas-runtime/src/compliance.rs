@@ -194,3 +194,146 @@ impl<'a> ComplianceChecker<'a> {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use atlas_ir::{
+        DecisionBranch, DecisionNode, DecisionTerminal, DecisionTree, DecisionTrigger,
+        Edge, EdgeType, Meta, Node, NodeKind, NodeStatus, RecommendationItem, SourceRef,
+    };
+
+    fn ref_() -> SourceRef {
+        SourceRef {
+            source_id: "s".into(),
+            locator: "l".into(),
+            line: None,
+            hash: "h".into(),
+        }
+    }
+
+    fn node(id: &str, kind: NodeKind) -> Node {
+        Node {
+            id: id.into(),
+            kind,
+            name: id.into(),
+            version: None,
+            category: None,
+            provenance: vec![ref_()],
+            confidence: 1.0,
+            status: NodeStatus::Verified,
+            description: Some(format!("desc for {}", id)),
+            attributes: serde_json::json!({}),
+        }
+    }
+
+    fn compliant_ir() -> EngineeringIR {
+        let mut ir = EngineeringIR::new(Meta {
+            schema_version: "0.1.0".into(),
+            generator: "t".into(),
+            created_at: 0,
+            source_manifest: Vec::new(),
+        });
+        ir.add_node(node("package:p", NodeKind::Package));
+        ir.add_node(node("concept:a", NodeKind::Concept));
+        ir.add_node(node("api:b", NodeKind::API));
+        ir.add_edge(Edge {
+            id: "e1".into(),
+            src: "package:p".into(),
+            dst: "concept:a".into(),
+            edge_type: EdgeType::PartOf,
+            weight: 1.0,
+            provenance: ref_(),
+        });
+        ir.add_edge(Edge {
+            id: "e2".into(),
+            src: "package:p".into(),
+            dst: "api:b".into(),
+            edge_type: EdgeType::DependsOn,
+            weight: 1.0,
+            provenance: ref_(),
+        });
+        ir.decision_trees.push(DecisionTree {
+            id: "tree:1".into(),
+            trigger: DecisionTrigger {
+                intent: Some("choose".into()),
+                domain: None,
+                tags: vec!["x".into()],
+            },
+            root: "start".into(),
+            nodes: vec![DecisionNode {
+                id: "start".into(),
+                question: None,
+                node_type: None,
+                branches: vec![DecisionBranch {
+                    condition: "a=b".into(),
+                    next: "end".into(),
+                }],
+                terminal: Some(DecisionTerminal {
+                    recommendation: vec![RecommendationItem {
+                        node_id: "concept:a".into(),
+                        confidence: 0.8,
+                    }],
+                    rationale: "Solid rationale based on evidence.".into(),
+                    agent_instructions: Some("hand off to human".into()),
+                }),
+            }],
+        });
+        ir
+    }
+
+    #[test]
+    fn test_eu_ai_act_passes() {
+        let ir = compliant_ir();
+        let c = ComplianceChecker::new(&ir);
+        let checks = c.check_policy("eu-ai-act");
+        assert!(!checks.is_empty());
+        assert!(checks.iter().all(|ch| ch.passed || ch.severity == "warn"),
+            "failed: {:?}", checks.iter().filter(|ch| !ch.passed).map(|ch| &ch.name).collect::<Vec<_>>());
+    }
+
+    #[test]
+    fn test_soc2_passes() {
+        let ir = compliant_ir();
+        let c = ComplianceChecker::new(&ir);
+        let checks = c.check_policy("soc2");
+        assert!(checks.iter().all(|ch| ch.passed));
+    }
+
+    #[test]
+    fn test_hipaa_passes() {
+        let mut ir = compliant_ir();
+        // hipaa requires failure modes to have fixes; add one
+        ir.failure_modes.push(atlas_ir::FailureMode {
+            id: "failure:f".into(),
+            symptom: "s".into(),
+            cause: "c".into(),
+            fix: "fix it".into(),
+            affects: vec![],
+            version_range: None,
+        });
+        let c = ComplianceChecker::new(&ir);
+        let checks = c.check_policy("hipaa");
+        assert!(checks.iter().all(|ch| ch.passed || ch.severity == "warn"));
+    }
+
+    #[test]
+    fn test_unknown_policy_fails() {
+        let ir = compliant_ir();
+        let c = ComplianceChecker::new(&ir);
+        let checks = c.check_policy("nist-800");
+        assert_eq!(checks.len(), 1);
+        assert!(!checks[0].passed);
+        assert_eq!(checks[0].severity, "error");
+    }
+
+    #[test]
+    fn test_soc2_fails_without_edges() {
+        let mut ir = compliant_ir();
+        ir.edges.clear();
+        let c = ComplianceChecker::new(&ir);
+        let checks = c.check_policy("soc2");
+        assert!(checks.iter().any(|ch| !ch.passed));
+    }
+}
+

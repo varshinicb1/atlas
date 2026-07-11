@@ -60,12 +60,106 @@ import { DurableObject } from "cloudflare:workers";
 const RATE_LIMIT_WINDOW = 60_000;
 const RATE_LIMIT_MAX = 60;
 
+interface ApiKeyRecord {
+  org: string;
+  role: "admin" | "publisher" | "viewer";
+  created_at: string;
+  last_used: string | null;
+  expires_at: string | null;
+}
+
+interface ApiKeyInput {
+  org: string;
+  role: "admin" | "publisher" | "viewer";
+  expires_at?: string | null;
+  key?: string;
+}
+
+interface ApiKeyListing {
+  key_prefix: string;
+  org: string;
+  role: string;
+  created_at: string;
+  last_used: string | null;
+  expires_at: string | null;
+}
+
+interface VersionSnapshot {
+  metadata: PackageMetadata;
+  files: Record<string, string>;
+}
+
+interface ExportDump {
+  version: string;
+  exported_at: string;
+  packages: Array<{
+    metadata: PackageMetadata;
+    files: Record<string, string>;
+    versions: string[];
+  }>;
+}
+
+interface RegistryMetrics {
+  total_packages: number;
+  total_downloads: number;
+  total_publishes: number;
+  per_org: Record<string, { packages: number; downloads: number }>;
+  uptime_seconds: number;
+  generated_at: string;
+}
+
+interface RateLimitStatus {
+  limit: number;
+  remaining: number;
+  reset_at: number;
+  limited: boolean;
+}
+
+function generateApiKey(): string {
+  const arr = new Uint8Array(24);
+  crypto.getRandomValues(arr);
+  return "atlas_" + Array.from(arr, (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+function redactKey(key: string): string {
+  if (key.length <= 8) return "****" + key.slice(-2);
+  return key.slice(0, 6) + "****" + key.slice(-4);
+}
+
 export class RegistryAgent extends DurableObject<Env> {
   private rateLimits: Map<string, RateLimitState>;
+  private startTime: number;
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
     this.rateLimits = new Map();
+    this.startTime = Date.now();
+  }
+
+  // Consumes a rate-limit token and reports the current status so the HTTP
+  // layer can attach X-RateLimit-* headers. Returns `limited: true` once the
+  // per-key window is exhausted (caller should respond 429).
+  async rateLimitCheck(apiKey: string): Promise<RateLimitStatus> {
+    const now = Date.now();
+    const state = this.rateLimits.get(apiKey);
+
+    if (!state || now > state.reset_at) {
+      const reset_at = now + RATE_LIMIT_WINDOW;
+      this.rateLimits.set(apiKey, { count: 1, reset_at });
+      return { limit: RATE_LIMIT_MAX, remaining: RATE_LIMIT_MAX - 1, reset_at, limited: false };
+    }
+
+    if (state.count >= RATE_LIMIT_MAX) {
+      return { limit: RATE_LIMIT_MAX, remaining: 0, reset_at: state.reset_at, limited: true };
+    }
+
+    state.count++;
+    return {
+      limit: RATE_LIMIT_MAX,
+      remaining: RATE_LIMIT_MAX - state.count,
+      reset_at: state.reset_at,
+      limited: false,
+    };
   }
 
   private checkRateLimit(apiKey: string): void {
@@ -86,7 +180,21 @@ export class RegistryAgent extends DurableObject<Env> {
     if (!raw) {
       throw new AuthError("Invalid or missing API key.");
     }
-    return JSON.parse(raw);
+    const record = JSON.parse(raw) as ApiKeyRecord;
+    if (record.expires_at && new Date(record.expires_at).getTime() < Date.now()) {
+      throw new AuthError("API key has expired.");
+    }
+    // Legacy keys ({ org, role }) are tolerated; default extra fields.
+    const normalized: ApiKeyRecord = {
+      org: record.org,
+      role: record.role,
+      created_at: record.created_at || new Date().toISOString(),
+      last_used: record.last_used,
+      expires_at: record.expires_at || null,
+    };
+    normalized.last_used = new Date().toISOString();
+    await this.env.PACKAGES.put(`apikey:${apiKey}`, JSON.stringify(normalized));
+    return { org: normalized.org, role: normalized.role };
   }
 
   private async appendAudit(entry: AuditEntry): Promise<void> {
@@ -177,6 +285,9 @@ export class RegistryAgent extends DurableObject<Env> {
   }
 
   async publishPackage(data: PublishInput, auth: { org: string; role: string }, ip: string): Promise<{ success: boolean; name: string; version: string; replaced: boolean }> {
+    if (auth.role === "viewer") {
+      throw new AuthError("Viewers cannot publish packages.");
+    }
     if (!data.name || !data.name.match(/^[a-z0-9_-]+$/)) {
       throw new ValidationError("Package name must be lowercase alphanumeric with underscores/hyphens.");
     }
@@ -223,6 +334,19 @@ export class RegistryAgent extends DurableObject<Env> {
 
     await this.ctx.storage.put(`pkg:${data.name}:meta`, JSON.stringify(metadata));
     await this.ctx.storage.put(`pkg:${data.name}:files`, JSON.stringify(data.files));
+
+    // Version history: keep an ordered list of published versions and a
+    // per-version snapshot so prior releases remain inspectable.
+    const versionsRaw = (await this.ctx.storage.get<string>(`pkg:${data.name}:versions`)) || "[]";
+    const versions: string[] = JSON.parse(versionsRaw);
+    if (!versions.includes(data.version)) {
+      versions.push(data.version);
+    }
+    await this.ctx.storage.put(`pkg:${data.name}:versions`, JSON.stringify(versions));
+    await this.ctx.storage.put(
+      `pkg:${data.name}:v:${data.version}`,
+      JSON.stringify({ metadata, files: data.files })
+    );
 
     await this.appendAudit({
       action: "publish",
@@ -344,15 +468,184 @@ export class RegistryAgent extends DurableObject<Env> {
     };
   }
 
-  async incrementDownload(name: string): Promise<void> {
+  async incrementDownload(name: string): Promise<number> {
     const raw = await this.ctx.storage.get<string>(`pkg:${name}:meta`);
-    if (!raw) return;
+    if (!raw) return 0;
     const meta: PackageMetadata = JSON.parse(raw);
     meta.download_count++;
     await this.ctx.storage.put(`pkg:${name}:meta`, JSON.stringify(meta));
     if (meta.org) {
       await this.trackUsage(meta.org, "downloads", name);
     }
+    return meta.download_count;
+  }
+
+  async getPackageVersions(name: string): Promise<{ name: string; versions: string[] } | null> {
+    const raw = await this.ctx.storage.get<string>(`pkg:${name}:meta`);
+    if (!raw) return null;
+    const versionsRaw = (await this.ctx.storage.get<string>(`pkg:${name}:versions`)) || "[]";
+    return { name, versions: JSON.parse(versionsRaw) as string[] };
+  }
+
+  async getPackageVersion(
+    name: string,
+    version: string
+  ): Promise<VersionSnapshot | null> {
+    const raw = await this.ctx.storage.get<string>(`pkg:${name}:meta`);
+    if (!raw) return null;
+    const snapshotRaw = await this.ctx.storage.get<string>(`pkg:${name}:v:${version}`);
+    if (!snapshotRaw) return null;
+    return JSON.parse(snapshotRaw) as VersionSnapshot;
+  }
+
+  // --- API key management -------------------------------------------------
+
+  async createApiKey(input: ApiKeyInput): Promise<{ key: string; org: string; role: string }> {
+    const role = input.role;
+    if (!["admin", "publisher", "viewer"].includes(role)) {
+      throw new ValidationError("Invalid role. Must be admin, publisher, or viewer.");
+    }
+    if (input.expires_at && new Date(input.expires_at).toString() === "Invalid Date") {
+      throw new ValidationError("expires_at must be a valid ISO date string.");
+    }
+    const key = input.key && input.key.length > 0 ? input.key : generateApiKey();
+    const record: ApiKeyRecord = {
+      org: input.org,
+      role,
+      created_at: new Date().toISOString(),
+      last_used: null,
+      expires_at: input.expires_at ?? null,
+    };
+    await this.env.PACKAGES.put(`apikey:${key}`, JSON.stringify(record));
+    return { key, org: input.org, role };
+  }
+
+  async listApiKeys(org: string): Promise<ApiKeyListing[]> {
+    const list = await this.env.PACKAGES.list({ prefix: "apikey:" });
+    const out: ApiKeyListing[] = [];
+    for (const k of list.keys) {
+      const val = await this.env.PACKAGES.get(k.name);
+      if (!val) continue;
+      const rec = JSON.parse(val) as ApiKeyRecord;
+      if (rec.org !== org) continue;
+      const fullKey = k.name.replace(/^apikey:/, "");
+      out.push({
+        key_prefix: redactKey(fullKey),
+        org: rec.org,
+        role: rec.role,
+        created_at: rec.created_at,
+        last_used: rec.last_used,
+        expires_at: rec.expires_at,
+      });
+    }
+    return out;
+  }
+
+  async revokeApiKey(org: string, key: string): Promise<{ success: boolean }> {
+    const raw = await this.env.PACKAGES.get(`apikey:${key}`);
+    if (!raw) {
+      throw new ValidationError("API key not found.");
+    }
+    const rec = JSON.parse(raw) as ApiKeyRecord;
+    if (rec.org !== org) {
+      throw new AuthError("API key belongs to a different organization.");
+    }
+    await this.env.PACKAGES.delete(`apikey:${key}`);
+    return { success: true };
+  }
+
+  // --- Backup / export ---------------------------------------------------
+
+  async exportAll(): Promise<ExportDump> {
+    const names = (await this.ctx.storage.get<string[]>("packages_list")) || [];
+    const packages: ExportDump["packages"] = [];
+    for (const name of names) {
+      const metaRaw = await this.ctx.storage.get<string>(`pkg:${name}:meta`);
+      if (!metaRaw) continue;
+      const filesRaw = (await this.ctx.storage.get<string>(`pkg:${name}:files`)) || "{}";
+      const versionsRaw = (await this.ctx.storage.get<string>(`pkg:${name}:versions`)) || "[]";
+      packages.push({
+        metadata: JSON.parse(metaRaw) as PackageMetadata,
+        files: JSON.parse(filesRaw) as Record<string, string>,
+        versions: JSON.parse(versionsRaw) as string[],
+      });
+    }
+    return {
+      version: "1.0",
+      exported_at: new Date().toISOString(),
+      packages,
+    };
+  }
+
+  async importAll(dump: ExportDump): Promise<{ imported: number }> {
+    if (!dump || !Array.isArray(dump.packages)) {
+      throw new ValidationError("Invalid export dump: missing packages array.");
+    }
+    const names = (await this.ctx.storage.get<string[]>("packages_list")) || [];
+    let imported = 0;
+    for (const pkg of dump.packages) {
+      const meta = pkg.metadata;
+      if (!meta || typeof meta !== "object" || !meta.name) {
+        throw new ValidationError("Invalid package entry in dump.");
+      }
+      if (!meta.name.match(/^[a-z0-9_-]+$/)) {
+        throw new ValidationError(`Invalid package name in dump: ${meta.name}`);
+      }
+      await this.ctx.storage.put(`pkg:${meta.name}:meta`, JSON.stringify(meta));
+      await this.ctx.storage.put(
+        `pkg:${meta.name}:files`,
+        JSON.stringify(pkg.files || {})
+      );
+      if (Array.isArray(pkg.versions)) {
+        await this.ctx.storage.put(
+          `pkg:${meta.name}:versions`,
+          JSON.stringify(pkg.versions)
+        );
+      }
+      if (!names.includes(meta.name)) names.push(meta.name);
+      imported++;
+    }
+    await this.ctx.storage.put("packages_list", names);
+    return { imported };
+  }
+
+  // --- Metrics -----------------------------------------------------------
+
+  async getMetrics(): Promise<RegistryMetrics> {
+    const names = (await this.ctx.storage.get<string[]>("packages_list")) || [];
+    let total_packages = 0;
+    let total_downloads = 0;
+    const perOrg: Record<string, { packages: number; downloads: number }> = {};
+
+    for (const name of names) {
+      const raw = await this.ctx.storage.get<string>(`pkg:${name}:meta`);
+      if (!raw) continue;
+      total_packages++;
+      const meta = JSON.parse(raw) as PackageMetadata;
+      const org = meta.org || "unknown";
+      if (!perOrg[org]) perOrg[org] = { packages: 0, downloads: 0 };
+      perOrg[org].packages++;
+      perOrg[org].downloads += meta.download_count || 0;
+      total_downloads += meta.download_count || 0;
+    }
+
+    let total_publishes = 0;
+    const usageList = await this.env.PACKAGES.list({ prefix: "usage:" });
+    for (const k of usageList.keys) {
+      if (k.name.includes(":publishes:")) {
+        const v = await this.env.PACKAGES.get(k.name);
+        if (v) total_publishes += parseInt(v, 10) || 0;
+      }
+    }
+
+    return {
+      total_packages,
+      total_downloads,
+      total_publishes,
+      per_org: perOrg,
+      uptime_seconds: Math.max(0, Math.floor((Date.now() - this.startTime) / 1000)),
+      generated_at: new Date().toISOString(),
+    };
   }
 }
 

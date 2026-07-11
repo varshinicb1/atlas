@@ -1,0 +1,91 @@
+id: react_state_location
+trigger:
+  intent: choose_solution
+  domain: frontend
+  tags: [react, state, architecture]
+root: scope_node
+nodes:
+  - id: scope_node
+    question: "Is the state local to one component/subtree or shared across distant parts of the tree?"
+    node_type: boolean
+    branches:
+      - condition: "answer=local"
+        next: local_complexity_node
+      - condition: "answer=shared"
+        next: shared_frequency_node
+  - id: local_complexity_node
+    question: "Does the local state have multiple interdependent fields or async transitions?"
+    node_type: boolean
+    branches:
+      - condition: "answer=true"
+        next: usereducer_terminal
+      - condition: "answer=false"
+        next: usestate_terminal
+  - id: shared_frequency_node
+    question: "Does the shared value change on every keystroke/interaction (high frequency) or rarely?"
+    node_type: boolean
+    branches:
+      - condition: "answer=true"
+        next: external_store_terminal
+      - condition: "answer=false"
+        next: context_terminal
+  - id: usestate_terminal
+    terminal:
+      recommendation:
+        - node_id: "concept:react/state"
+          confidence: 0.95
+      rationale: "Local UI state belongs in useState; keep it close to where it is used. Avoid lifting state unnecessarily."
+  - id: usereducer_terminal
+    terminal:
+      recommendation:
+        - node_id: "concept:react/state"
+          confidence: 0.8
+      rationale: "Use useReducer for complex, interdependent local state or when state transitions are best expressed as actions."
+  - id: context_terminal
+    terminal:
+      recommendation:
+        - node_id: "concept:react/context"
+          confidence: 0.8
+      rationale: "Use Context for infrequently-changing shared values (theme, auth). Split contexts to avoid over-broad re-renders."
+  - id: external_store_terminal
+    terminal:
+      recommendation:
+        - node_id: "concept:react/state"
+          confidence: 0.85
+      rationale: "High-frequency shared state belongs in an external store (Zustand/Redux) with selectors to scope re-renders."
+---
+id: react_server_vs_client
+trigger:
+  intent: choose_solution
+  domain: frontend
+  tags: [react, server-components, rendering]
+root: interactivity_node
+nodes:
+  - id: interactivity_node
+    question: "Does this component need browser-only APIs, event handlers, or local interactivity?"
+    node_type: boolean
+    branches:
+      - condition: "answer=true"
+        next: client_terminal
+      - condition: "answer=false"
+        next: data_source_node
+  - id: data_source_node
+    question: "Does it read directly from a database, filesystem, or server-only secret?"
+    node_type: boolean
+    branches:
+      - condition: "answer=true"
+        next: server_terminal
+      - condition: "answer=false"
+        next: server_terminal
+  - id: client_terminal
+    terminal:
+      recommendation:
+        - node_id: "concept:react/client-components"
+          confidence: 0.9
+      rationale: "Mark interactive components 'use client'. Keep them small and pass serializable props from the server."
+  - id: server_terminal
+    terminal:
+      recommendation:
+        - node_id: "concept:react/server-components"
+          confidence: 0.9
+      rationale: "Render as a Server Component by default — no client JS, direct data access, and stream via Suspense."

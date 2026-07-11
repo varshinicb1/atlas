@@ -141,3 +141,100 @@ Answer concisely and accurately:"#
         Ok(text)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::DecisionResult;
+    use atlas_ir::{Node, NodeKind, NodeStatus, SourceRef};
+
+    fn node(id: &str, name: &str) -> Node {
+        Node {
+            id: id.into(),
+            kind: NodeKind::Concept,
+            name: name.into(),
+            version: Some("1.0".into()),
+            category: None,
+            provenance: vec![SourceRef {
+                source_id: "s".into(),
+                locator: "l".into(),
+                line: None,
+                hash: "h".into(),
+            }],
+            confidence: 1.0,
+            status: NodeStatus::Verified,
+            description: Some("A long description of the concept that should be truncated in output to keep it short.".into()),
+            attributes: serde_json::json!({}),
+        }
+    }
+
+    fn decide_result() -> DecisionResult {
+        DecisionResult {
+            tree_id: "tree:1".into(),
+            recommendations: vec![atlas_ir::RecommendationItem {
+                node_id: "concept:a".into(),
+                confidence: 0.9,
+            }],
+            rationale: "Because it works.".into(),
+            agent_instructions: Some("review manually".into()),
+            path: vec!["start".into(), "end".into()],
+        }
+    }
+
+    #[test]
+    fn test_template_reasoner_with_nodes_and_decision() {
+        let n = node("concept:a", "Alpha");
+        let nodes = vec![&n];
+        let dr = decide_result();
+        let ctx = ReasonContext {
+            query: "how do I use Alpha?",
+            bundle: "demo",
+            confidence: 0.95,
+            nodes: &nodes,
+            total_matches: 1,
+            decide_result: Some(&dr),
+        };
+        let out = TemplateReasoner.reason("how do I use Alpha?", &ctx).unwrap();
+        assert!(out.contains("## Answer for: how do I use Alpha?"));
+        assert!(out.contains("high confidence"));
+        assert!(out.contains("Alpha"));
+        assert!(out.contains("Decision Path"));
+        assert!(out.contains("tree:1"));
+        assert!(out.contains("Because it works."));
+        assert!(out.contains("review manually"));
+        assert!(out.contains("_v1.0_"));
+    }
+
+    #[test]
+    fn test_template_reasoner_low_confidence_no_nodes() {
+        let nodes: Vec<&Node> = Vec::new();
+        let ctx = ReasonContext {
+            query: "missing thing",
+            bundle: "demo",
+            confidence: 0.0,
+            nodes: &nodes,
+            total_matches: 0,
+            decide_result: None,
+        };
+        let out = TemplateReasoner.reason("missing thing", &ctx).unwrap();
+        assert!(out.contains("low confidence"));
+        assert!(out.contains("No matching knowledge found"));
+    }
+
+    #[test]
+    fn test_template_reasoner_moderate_confidence() {
+        let n = node("concept:b", "Beta");
+        let nodes = vec![&n];
+        let ctx = ReasonContext {
+            query: "q",
+            bundle: "demo",
+            confidence: 0.5,
+            nodes: &nodes,
+            total_matches: 1,
+            decide_result: None,
+        };
+        let out = TemplateReasoner.reason("q", &ctx).unwrap();
+        assert!(out.contains("moderate confidence"));
+    }
+}
+

@@ -153,3 +153,82 @@ pub fn read_header(data: &[u8]) -> Result<(u16, u16, u32, u16, u64, [u8; 32]), a
     checksum.copy_from_slice(&data[off..off + 32]);
     Ok((schema_major, schema_minor, flags, section_count, toc_offset, checksum))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use atlas_ir::{EngineeringIR, Meta, Node, NodeKind, NodeStatus, SourceRef, Edge, EdgeType};
+
+    fn sample_ir() -> EngineeringIR {
+        let mut ir = EngineeringIR::new(Meta {
+            schema_version: "0.1.0".into(),
+            generator: "test".into(),
+            created_at: 0,
+            source_manifest: Vec::new(),
+        });
+        ir.add_node(Node {
+            id: "concept:a".into(),
+            kind: NodeKind::Concept,
+            name: "Alpha".into(),
+            version: None,
+            category: None,
+            provenance: vec![SourceRef {
+                source_id: "s".into(),
+                locator: "l".into(),
+                line: None,
+                hash: "h".into(),
+            }],
+            confidence: 1.0,
+            status: NodeStatus::Verified,
+            description: Some("desc".into()),
+            attributes: serde_json::json!({}),
+        });
+        ir.add_edge(Edge {
+            id: "e1".into(),
+            src: "concept:a".into(),
+            dst: "concept:b".into(),
+            edge_type: EdgeType::DependsOn,
+            weight: 1.0,
+            provenance: SourceRef {
+                source_id: "s".into(),
+                locator: "l".into(),
+                line: None,
+                hash: "h".into(),
+            },
+        });
+        ir.indices = Some(atlas_ir::Indices::build(&ir));
+        ir
+    }
+
+    #[test]
+    fn test_write_and_header_roundtrip() {
+        let ir = sample_ir();
+        let path = std::env::temp_dir().join("atlas_bin_test_write.atlas");
+        write_binary(&ir, &path).unwrap();
+        assert!(is_atlas_file(&path));
+
+        let data = std::fs::read(&path).unwrap();
+        let (major, minor, flags, count, _toc, _checksum) = read_header(&data).unwrap();
+        assert_eq!(major, 0);
+        assert_eq!(minor, 1);
+        assert_eq!(flags, 0b001);
+        // meta, ontology, nodes, edges, decision_trees, examples, failure_modes,
+        // workflows, verification_rules, indices => 10 sections
+        assert_eq!(count, 10);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn test_is_atlas_file_rejects_non_atlas() {
+        let path = std::env::temp_dir().join("atlas_bin_test_not.atlas");
+        std::fs::write(&path, b"not an atlas file at all").unwrap();
+        assert!(!is_atlas_file(&path));
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn test_read_header_rejects_bad_magic() {
+        let data = b"NOTATLASdata".to_vec();
+        assert!(read_header(&data).is_err());
+    }
+}

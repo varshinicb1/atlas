@@ -377,7 +377,7 @@ impl Indices {
         let mut symbol = std::collections::HashMap::new();
         let mut types: std::collections::HashMap<String, Vec<String>> = std::collections::HashMap::new();
         for node in &ir.nodes {
-            symbol.insert(node.name.clone(), node.id.clone());
+            symbol.insert(node.name.to_lowercase(), node.id.clone());
             types
                 .entry(node.kind.to_string())
                 .or_default()
@@ -405,5 +405,219 @@ impl Indices {
             workflow_index: wf_index,
             embeddings,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn empty_meta() -> Meta {
+        Meta {
+            schema_version: "0.1.0".into(),
+            generator: "test".into(),
+            created_at: 0,
+            source_manifest: Vec::new(),
+        }
+    }
+
+    fn ref_() -> SourceRef {
+        SourceRef {
+            source_id: "s".into(),
+            locator: "l".into(),
+            line: None,
+            hash: "h".into(),
+        }
+    }
+
+    fn node(id: &str, kind: NodeKind, name: &str) -> Node {
+        Node {
+            id: id.to_string(),
+            kind,
+            name: name.to_string(),
+            version: None,
+            category: None,
+            provenance: vec![ref_()],
+            confidence: 1.0,
+            status: NodeStatus::Verified,
+            description: Some(format!("description for {}", name)),
+            attributes: serde_json::json!({}),
+        }
+    }
+
+    fn edge(src: &str, dst: &str, t: EdgeType) -> Edge {
+        Edge {
+            id: Edge::new_id(),
+            src: src.into(),
+            dst: dst.into(),
+            edge_type: t,
+            weight: 1.0,
+            provenance: ref_(),
+        }
+    }
+
+    #[test]
+    fn test_new_has_default_ontology() {
+        let ir = EngineeringIR::new(empty_meta());
+        assert!(!ir.ontology.node_kinds.is_empty());
+        assert!(ir.ontology.node_kinds.contains(&"Concept".to_string()));
+        assert!(ir.ontology.edge_types.contains(&"DEPENDS_ON".to_string()));
+        assert!(ir.nodes.is_empty());
+        assert!(ir.edges.is_empty());
+    }
+
+    #[test]
+    fn test_add_and_find_node() {
+        let mut ir = EngineeringIR::new(empty_meta());
+        ir.add_node(node("a", NodeKind::Concept, "Alpha"));
+        assert_eq!(ir.nodes.len(), 1);
+        assert!(ir.find_node("a").is_some());
+        assert!(ir.find_node("missing").is_none());
+    }
+
+    #[test]
+    fn test_neighbors_filtered() {
+        let mut ir = EngineeringIR::new(empty_meta());
+        ir.add_node(node("a", NodeKind::Concept, "A"));
+        ir.add_node(node("b", NodeKind::Concept, "B"));
+        ir.add_node(node("c", NodeKind::Concept, "C"));
+        ir.add_edge(edge("a", "b", EdgeType::DependsOn));
+        ir.add_edge(edge("a", "c", EdgeType::Uses));
+
+        let all = ir.neighbors("a", None);
+        assert_eq!(all.len(), 2);
+        let dep = ir.neighbors("a", Some(EdgeType::DependsOn));
+        assert_eq!(dep.len(), 1);
+        assert_eq!(dep[0].id, "b");
+        // successors is an alias for neighbors
+        let succ = ir.successors("a", None);
+        assert_eq!(succ.len(), 2);
+    }
+
+    #[test]
+    fn test_predecessors() {
+        let mut ir = EngineeringIR::new(empty_meta());
+        ir.add_node(node("a", NodeKind::Concept, "A"));
+        ir.add_node(node("b", NodeKind::Concept, "B"));
+        ir.add_edge(edge("a", "b", EdgeType::PartOf));
+        let preds = ir.predecessors("b", None);
+        assert_eq!(preds.len(), 1);
+        assert_eq!(preds[0].id, "a");
+        let preds_filtered = ir.predecessors("b", Some(EdgeType::DependsOn));
+        assert!(preds_filtered.is_empty());
+    }
+
+    #[test]
+    fn test_subgraph_depth() {
+        let mut ir = EngineeringIR::new(empty_meta());
+        for (id, name) in [("a", "A"), ("b", "B"), ("c", "C"), ("d", "D")] {
+            ir.add_node(node(id, NodeKind::Concept, name));
+        }
+        ir.add_edge(edge("a", "b", EdgeType::DependsOn));
+        ir.add_edge(edge("b", "c", EdgeType::DependsOn));
+        ir.add_edge(edge("c", "d", EdgeType::DependsOn));
+
+        let sg = ir.subgraph("a", 1);
+        let ids: Vec<&str> = sg.iter().map(|n| n.id.as_str()).collect();
+        assert!(ids.contains(&"a"));
+        assert!(ids.contains(&"b"));
+        assert!(!ids.contains(&"c"));
+        assert!(!ids.contains(&"d"));
+    }
+
+    #[test]
+    fn test_subgraph_full() {
+        let mut ir = EngineeringIR::new(empty_meta());
+        for (id, name) in [("a", "A"), ("b", "B"), ("c", "C")] {
+            ir.add_node(node(id, NodeKind::Concept, name));
+        }
+        ir.add_edge(edge("a", "b", EdgeType::DependsOn));
+        ir.add_edge(edge("b", "c", EdgeType::DependsOn));
+        let sg = ir.subgraph("a", 10);
+        assert_eq!(sg.len(), 3);
+    }
+
+    #[test]
+    fn test_search_by_name_and_id() {
+        let mut ir = EngineeringIR::new(empty_meta());
+        ir.add_node(node("concept:alpha", NodeKind::Concept, "AlphaThing"));
+        ir.add_node(node("concept:beta", NodeKind::Concept, "BetaThing"));
+
+        let by_name = ir.search("alpha");
+        assert_eq!(by_name.len(), 1);
+        assert_eq!(by_name[0].id, "concept:alpha");
+
+        let by_id = ir.search("concept:beta");
+        assert_eq!(by_id.len(), 1);
+        assert_eq!(by_id[0].id, "concept:beta");
+
+        assert!(ir.search("zzz").is_empty());
+    }
+
+    #[test]
+    fn test_search_uses_symbol_index_case_insensitive() {
+        let mut ir = EngineeringIR::new(empty_meta());
+        ir.add_node(node("concept:x", NodeKind::Concept, "Xylophone"));
+        ir.indices = Some(Indices::build(&ir));
+        let r = ir.search("xylophone");
+        assert_eq!(r.len(), 1);
+        assert_eq!(r[0].id, "concept:x");
+        // Original-case query must also match.
+        assert_eq!(ir.search("Xylophone").len(), 1);
+    }
+
+    #[test]
+    fn test_indices_build() {
+        let mut ir = EngineeringIR::new(empty_meta());
+        ir.add_node(node("concept:a", NodeKind::Concept, "Alpha"));
+        ir.add_node(node("api:b", NodeKind::API, "Beta"));
+        ir.workflows.push(Workflow {
+            id: "workflow:w".into(),
+            name: "W".into(),
+            description: "d".into(),
+            steps: Vec::new(),
+        });
+        let idx = Indices::build(&ir);
+        assert_eq!(idx.symbol_index.get("alpha"), Some(&"concept:a".to_string()));
+        assert_eq!(idx.type_index.get("Concept"), Some(&vec!["concept:a".to_string()]));
+        assert_eq!(idx.workflow_index.get("workflow:w"), Some(&"W".to_string()));
+        assert_eq!(idx.embeddings.len(), 2);
+        assert_eq!(idx.embeddings[0].len(), 128);
+    }
+
+    #[test]
+    fn test_ontology_default() {
+        let o = Ontology::default();
+        assert!(o.node_kinds.len() >= 13);
+        assert!(o.edge_types.len() >= 13);
+        assert!(o.node_kinds.contains(&"Workflow".to_string()));
+        assert!(o.edge_types.contains(&"HAS_WORKFLOW".to_string()));
+    }
+
+    #[test]
+    fn test_nodekind_edgekind_display() {
+        assert_eq!(format!("{}", NodeKind::API), "API");
+        assert_eq!(format!("{}", NodeKind::FailureMode), "FailureMode");
+        assert_eq!(format!("{}", EdgeType::DependsOn), "DependsOn");
+        assert_eq!(format!("{}", EdgeType::HasWorkflow), "HasWorkflow");
+    }
+
+    #[test]
+    fn test_edge_new_id_unique() {
+        let a = Edge::new_id();
+        let b = Edge::new_id();
+        assert_ne!(a, b);
+    }
+
+    #[test]
+    fn test_serde_roundtrip() {
+        let mut ir = EngineeringIR::new(empty_meta());
+        ir.add_node(node("concept:a", NodeKind::Concept, "Alpha"));
+        ir.add_edge(edge("concept:a", "concept:b", EdgeType::DependsOn));
+        let json = serde_json::to_string(&ir).unwrap();
+        let back: EngineeringIR = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.nodes.len(), 1);
+        assert_eq!(back.edges.len(), 1);
+        assert_eq!(back.edges[0].edge_type, EdgeType::DependsOn);
     }
 }

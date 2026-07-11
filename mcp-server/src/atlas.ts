@@ -2,7 +2,7 @@ import { execFileSync } from "child_process";
 import { existsSync } from "fs";
 import { join, isAbsolute, resolve } from "path";
 
-function findBinary(): string {
+export function findBinary(): string {
   const candidates = process.platform === "win32"
     ? ["atlas-cli.exe", "atlas.exe"]
     : ["atlas-cli", "atlas"];
@@ -34,7 +34,7 @@ function findBinary(): string {
   throw new Error("atlas CLI binary not found. Install with: cargo install --path atlas-cli");
 }
 
-function resolvePath(p: string): string {
+export function resolvePath(p: string): string {
   if (isAbsolute(p)) return p;
   const cwd = process.cwd();
   // Try cwd first, then parent
@@ -45,7 +45,7 @@ function resolvePath(p: string): string {
   return join(cwd, p);
 }
 
-function runCLI(...args: string[]): string {
+export function runCLI(...args: string[]): string {
   const bin = findBinary();
   const output = execFileSync(bin, ["--json", ...args], {
     encoding: "utf8",

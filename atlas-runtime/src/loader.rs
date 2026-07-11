@@ -159,3 +159,91 @@ impl AtlasBundle {
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use atlas_compiler::binary;
+    use atlas_ir::{Edge, EdgeType, EngineeringIR, Meta, Node, NodeKind, NodeStatus, SourceRef};
+
+    fn ref_() -> SourceRef {
+        SourceRef {
+            source_id: "s".into(),
+            locator: "l".into(),
+            line: None,
+            hash: "h".into(),
+        }
+    }
+
+    fn ir_with_node() -> EngineeringIR {
+        let mut ir = EngineeringIR::new(Meta {
+            schema_version: "0.1.0".into(),
+            generator: "t".into(),
+            created_at: 0,
+            source_manifest: Vec::new(),
+        });
+        ir.add_node(Node {
+            id: "concept:a".into(),
+            kind: NodeKind::Concept,
+            name: "Alpha".into(),
+            version: None,
+            category: None,
+            provenance: vec![ref_()],
+            confidence: 1.0,
+            status: NodeStatus::Verified,
+            description: Some("desc".into()),
+            attributes: serde_json::json!({}),
+        });
+        ir.add_edge(Edge {
+            id: "e1".into(),
+            src: "concept:a".into(),
+            dst: "concept:b".into(),
+            edge_type: EdgeType::DependsOn,
+            weight: 1.0,
+            provenance: ref_(),
+        });
+        ir.indices = Some(atlas_ir::Indices::build(&ir));
+        ir
+    }
+
+    fn ir_empty() -> EngineeringIR {
+        let mut ir = EngineeringIR::new(Meta {
+            schema_version: "0.1.0".into(),
+            generator: "t".into(),
+            created_at: 0,
+            source_manifest: Vec::new(),
+        });
+        ir.indices = Some(atlas_ir::Indices::build(&ir));
+        ir
+    }
+
+    #[test]
+    fn test_from_file_roundtrip() {
+        let ir = ir_with_node();
+        let path = std::env::temp_dir().join("atlas_loader_test.atlas");
+        binary::write_binary(&ir, &path).unwrap();
+        let bundle = AtlasBundle::from_file(&path).unwrap();
+        assert_eq!(bundle.ir.nodes.len(), 1);
+        assert_eq!(bundle.ir.edges.len(), 1);
+        assert_eq!(bundle.ir.nodes[0].id, "concept:a");
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn test_from_file_rejects_bad_magic() {
+        let path = std::env::temp_dir().join("atlas_loader_bad.atlas");
+        std::fs::write(&path, b"this is not an atlas file").unwrap();
+        assert!(AtlasBundle::from_file(&path).is_err());
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn test_from_file_rejects_empty_nodes() {
+        let ir = ir_empty();
+        let path = std::env::temp_dir().join("atlas_loader_empty.atlas");
+        binary::write_binary(&ir, &path).unwrap();
+        assert!(AtlasBundle::from_file(&path).is_err());
+        let _ = std::fs::remove_file(&path);
+    }
+}
+

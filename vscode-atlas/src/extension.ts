@@ -1,12 +1,27 @@
 import * as vscode from "vscode";
-import * as path from "path";
 import * as cp from "child_process";
+import {
+  resolveCliPath,
+  resolveBundlePath,
+  outputPathFor,
+  isCompilable,
+  parseContextArgs,
+  buildSolveArgs,
+  buildDecideArgs,
+  buildCompileArgs,
+  buildDumpArgs,
+  buildSearchArgs,
+  buildInitArgs,
+  parseCliJson,
+} from "./cliArgs";
 
 function findCli(): string {
   const cfg = vscode.workspace.getConfiguration("atlas");
-  const custom = cfg.get<string>("cliPath");
-  if (custom) return custom;
-  return "atlas"; // assume on PATH, or in workspace
+  return resolveCliPath(cfg.get<string>("cliPath"));
+}
+
+function errorMessage(e: unknown): string {
+  return e instanceof Error ? e.message : String(e);
 }
 
 function runAtlas(args: string[]): Promise<string> {
@@ -40,39 +55,31 @@ class AtlasExplorerPanel {
         switch (msg.command) {
           case "solve":
             try {
-              const result = await runAtlas([
-                "solve",
-                "--bundle",
-                msg.bundle || "knowledge.atlas",
-                msg.query,
-                "--json",
-              ]);
+              const result = await runAtlas(
+                buildSolveArgs(msg.bundle, msg.query)
+              );
               this._panel.webview.postMessage({
                 command: "solveResult",
-                data: JSON.parse(result),
+                data: parseCliJson(result),
               });
-            } catch (e: any) {
+            } catch (e: unknown) {
               this._panel.webview.postMessage({
                 command: "error",
-                message: e.message,
+                message: errorMessage(e),
               });
             }
             return;
           case "dump":
             try {
-              const result = await runAtlas([
-                "dump",
-                "--bundle",
-                msg.bundle || "knowledge.atlas",
-              ]);
+              const result = await runAtlas(buildDumpArgs(msg.bundle));
               this._panel.webview.postMessage({
                 command: "dumpResult",
-                data: JSON.parse(result),
+                data: parseCliJson(result),
               });
-            } catch (e: any) {
+            } catch (e: unknown) {
               this._panel.webview.postMessage({
                 command: "error",
-                message: e.message,
+                message: errorMessage(e),
               });
             }
             return;
@@ -257,11 +264,16 @@ export function activate(context: vscode.ExtensionContext) {
       });
       if (!query) return;
       try {
-        const result = await runAtlas(["search", query, "--json"]);
-        const data = JSON.parse(result);
-        const packages = data.results || data.packages || [];
+        const result = await runAtlas(buildSearchArgs(query));
+        const data = parseCliJson<{ results?: unknown[]; packages?: unknown[] }>(result);
+        const packages = (data.results || data.packages || []) as Array<{
+          name: string;
+          description?: string;
+          version?: string;
+          download_count?: number;
+        }>;
         if (packages.length > 0) {
-          const items = packages.map((p: any) => ({
+          const items = packages.map((p) => ({
             label: p.name,
             description: p.description,
             detail: `v${p.version} | ${p.download_count || 0} downloads`,
@@ -270,8 +282,8 @@ export function activate(context: vscode.ExtensionContext) {
         } else {
           vscode.window.showInformationMessage("No packages found.");
         }
-      } catch (e: any) {
-        vscode.window.showErrorMessage(`Search failed: ${e.message}`);
+      } catch (e: unknown) {
+        vscode.window.showErrorMessage(`Search failed: ${errorMessage(e)}`);
       }
     })
   );
@@ -284,25 +296,19 @@ export function activate(context: vscode.ExtensionContext) {
         return;
       }
       const filePath = fileUri.fsPath;
-      const ext = path.extname(filePath);
-      if (ext !== ".md" && ext !== ".yaml") {
+      if (!isCompilable(filePath)) {
         vscode.window.showErrorMessage("Atlas compiles .md and .yaml files");
         return;
       }
       try {
-        const outPath = filePath.replace(ext, ".atlas");
-        const result = await runAtlas([
-          "compile",
-          filePath,
-          "--out", outPath,
-          "--json",
-        ]);
-        const data = JSON.parse(result);
+        const outPath = outputPathFor(filePath);
+        const result = await runAtlas(buildCompileArgs(filePath, outPath));
+        const data = parseCliJson<{ nodes: number; edges: number; output: string }>(result);
         vscode.window.showInformationMessage(
           `Compiled ${data.nodes} nodes, ${data.edges} edges → ${data.output}`
         );
-      } catch (e: any) {
-        vscode.window.showErrorMessage(`Compile failed: ${e.message}`);
+      } catch (e: unknown) {
+        vscode.window.showErrorMessage(`Compile failed: ${errorMessage(e)}`);
       }
     })
   );
@@ -315,17 +321,23 @@ export function activate(context: vscode.ExtensionContext) {
       });
       if (!query) return;
       try {
-        const bundlePath = vscode.workspace.getConfiguration("atlas").get("bundlePath", "knowledge.atlas");
-        const result = await runAtlas(["solve", "--bundle", bundlePath, query, "--json"]);
-        const data = JSON.parse(result);
+        const bundlePath = resolveBundlePath(
+          vscode.workspace.getConfiguration("atlas").get<string>("bundlePath")
+        );
+        const result = await runAtlas(buildSolveArgs(bundlePath, query));
+        const data = parseCliJson<{
+          nodes?: Array<{ name: string; kind?: string; description?: string }>;
+          total_matches?: number;
+          confidence?: number;
+        }>(result);
         if (data.nodes && data.nodes.length > 0) {
-          const items = data.nodes.map((n: any) => ({
+          const items = data.nodes.map((n) => ({
             label: n.name,
             description: n.kind,
             detail: n.description?.slice(0, 100) || "",
           }));
           const picked = await vscode.window.showQuickPick(items, {
-            placeHolder: `${data.total_matches} results (${(data.confidence * 100).toFixed(0)}% confidence)`,
+            placeHolder: `${data.total_matches} results (${((data.confidence ?? 0) * 100).toFixed(0)}% confidence)`,
           });
           if (picked) {
             vscode.window.showInformationMessage(picked.detail || picked.label);
@@ -333,8 +345,8 @@ export function activate(context: vscode.ExtensionContext) {
         } else {
           vscode.window.showInformationMessage("No matching knowledge found.");
         }
-      } catch (e: any) {
-        vscode.window.showErrorMessage(`Solve failed: ${e.message}`);
+      } catch (e: unknown) {
+        vscode.window.showErrorMessage(`Solve failed: ${errorMessage(e)}`);
       }
     })
   );
@@ -350,27 +362,22 @@ export function activate(context: vscode.ExtensionContext) {
         prompt: "Context (key=value, space separated)",
         placeHolder: "e.g., answer=true framework=flutter",
       });
-      const ctxArgs = ctx ? ctx.split(" ").flatMap((s) => ["-c", s]) : [];
+      const ctxArgs = parseContextArgs(ctx);
       try {
-        const bundlePath = vscode.workspace.getConfiguration("atlas").get("bundlePath", "knowledge.atlas");
-        const result = await runAtlas([
-          "decide",
-          "--bundle",
-          bundlePath,
-          query,
-          ...ctxArgs,
-          "--json",
-        ]);
+        const bundlePath = resolveBundlePath(
+          vscode.workspace.getConfiguration("atlas").get<string>("bundlePath")
+        );
+        const result = await runAtlas(buildDecideArgs(bundlePath, query, ctxArgs));
         if (result.trim() === "null") {
           vscode.window.showInformationMessage("No matching decision tree found.");
           return;
         }
-        const data = JSON.parse(result);
+        const data = parseCliJson<{ rationale: string; path: string[] }>(result);
         vscode.window.showInformationMessage(
           `Decision: ${data.rationale}\n\nPath: ${data.path.join(" → ")}`
         );
-      } catch (e: any) {
-        vscode.window.showErrorMessage(`Decide failed: ${e.message}`);
+      } catch (e: unknown) {
+        vscode.window.showErrorMessage(`Decide failed: ${errorMessage(e)}`);
       }
     })
   );
@@ -388,10 +395,10 @@ export function activate(context: vscode.ExtensionContext) {
       });
       if (!template) return;
       try {
-        const result = await runAtlas(["init", name, "--template", template]);
+        const result = await runAtlas(buildInitArgs(name, template));
         vscode.window.showInformationMessage(result);
-      } catch (e: any) {
-        vscode.window.showErrorMessage(`Init failed: ${e.message}`);
+      } catch (e: unknown) {
+        vscode.window.showErrorMessage(`Init failed: ${errorMessage(e)}`);
       }
     })
   );

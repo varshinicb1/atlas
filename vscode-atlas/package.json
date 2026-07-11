@@ -14,9 +14,24 @@
     "onCommand:atlas.explore",
     "onCommand:atlas.search",
     "onCommand:atlas.compile",
+    "onCommand:atlas.solve",
+    "onCommand:atlas.decide",
+    "onCommand:atlas.init",
     "onLanguage:markdown"
   ],
   "main": "./out/extension.js",
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "pretest": "npm run compile",
+    "test": "node --test \"out/test/**/*.test.js\""
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "@types/vscode": "^1.96.0",
+    "typescript": "^5"
+  },
   "contributes": {
     "commands": [
       {

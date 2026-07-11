@@ -38,8 +38,12 @@ export async function GET(request: NextRequest) {
     }
     const resolved = path.isAbsolute(cleanPath) ? cleanPath : path.join(workspace, cleanPath);
     const resolvedPath = path.resolve(resolved);
-    if (!resolvedPath.startsWith(workspace)) {
+    const workspaceRoot = workspace.endsWith(path.sep) ? workspace : workspace + path.sep;
+    if (resolvedPath !== workspace && !resolvedPath.startsWith(workspaceRoot)) {
       return NextResponse.json({ error: "Path traversal detected" }, { status: 400 });
+    }
+    if (!/\.atlas$/i.test(resolvedPath)) {
+      return NextResponse.json({ error: "Only .atlas bundles are allowed" }, { status: 400 });
     }
     const output = execFileSync(bin, ["dump", "--bundle", resolvedPath], {
       encoding: "utf8",

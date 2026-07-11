@@ -1,3 +1,6 @@
+export declare function findBinary(): string;
+export declare function resolvePath(p: string): string;
+export declare function runCLI(...args: string[]): string;
 export interface NodeResult {
     id: string;
     name: string;

@@ -628,3 +628,91 @@ fn run_install(name: Option<String>, sources: Vec<PathBuf>, json: bool) -> Resul
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use clap::Parser;
+
+    #[test]
+    fn test_parse_key_val_valid() {
+        let kv = parse_key_val("lang=rust").unwrap();
+        assert_eq!(kv.key, "lang");
+        assert_eq!(kv.value, "rust");
+    }
+
+    #[test]
+    fn test_parse_key_val_empty_value() {
+        let kv = parse_key_val("flag=").unwrap();
+        assert_eq!(kv.key, "flag");
+        assert_eq!(kv.value, "");
+    }
+
+    #[test]
+    fn test_parse_key_val_invalid() {
+        assert!(parse_key_val("noequals").is_err());
+        assert!(parse_key_val("").is_err());
+    }
+
+    #[test]
+    fn test_urlencode() {
+        assert_eq!(urlencode("hello"), "hello");
+        assert_eq!(urlencode("a b"), "a+b");
+        assert_eq!(urlencode("a/b"), "a%2Fb");
+        assert_eq!(urlencode("a.b"), "a.b");
+        assert_eq!(urlencode("a-b_~c"), "a-b_~c");
+    }
+
+    #[test]
+    fn test_cli_parse_solve() {
+        let cli = Cli::parse_from(["atlas", "solve", "--bundle", "b.atlas", "my query"]);
+        match cli.command {
+            Commands::Solve { bundle, query } => {
+                assert_eq!(bundle, std::path::PathBuf::from("b.atlas"));
+                assert_eq!(query, "my query");
+            }
+            _ => panic!("expected Solve"),
+        }
+    }
+
+    #[test]
+    fn test_cli_parse_compile() {
+        let cli = Cli::parse_from(["atlas", "compile", "a.md", "b.md", "--out", "out.atlas"]);
+        match cli.command {
+            Commands::Compile { sources, out, emit_ir } => {
+                assert_eq!(sources.len(), 2);
+                assert_eq!(out, std::path::PathBuf::from("out.atlas"));
+                assert!(!emit_ir);
+            }
+            _ => panic!("expected Compile"),
+        }
+    }
+
+    #[test]
+    fn test_cli_parse_verify_policy() {
+        let cli = Cli::parse_from(["atlas", "verify", "--bundle", "b.atlas", "--policy", "eu-ai-act"]);
+        match cli.command {
+            Commands::Verify { bundle, artifact, policy } => {
+                assert_eq!(bundle, std::path::PathBuf::from("b.atlas"));
+                assert!(artifact.is_none());
+                assert_eq!(policy.as_deref(), Some("eu-ai-act"));
+            }
+            _ => panic!("expected Verify"),
+        }
+    }
+
+    #[test]
+    fn test_cli_parse_decide_context() {
+        let cli = Cli::parse_from(["atlas", "decide", "--bundle", "b.atlas", "q", "-c", "lang=rust"]);
+        match cli.command {
+            Commands::Decide { bundle: _bundle, query, context } => {
+                assert_eq!(query, "q");
+                assert_eq!(context.len(), 1);
+                assert_eq!(context[0].key, "lang");
+                assert_eq!(context[0].value, "rust");
+            }
+            _ => panic!("expected Decide"),
+        }
+    }
+}
+

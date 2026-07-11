@@ -434,3 +434,128 @@ fn parse_kind(s: &str) -> NodeKind {
         _ => NodeKind::Concept,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::Path;
+
+    const PKG_MD: &str = r#"---
+kind: Package
+id: package:demo
+name: Demo Package
+version: "1.0.0"
+description: A demo package for tests
+concepts:
+  - name: Widget
+    id: concept:widget
+    description: A UI widget
+apis:
+  - name: build()
+    id: api:build
+    signature: "Widget build()"
+    returns: Widget
+    description: builds a widget
+workflows:
+  - name: Create
+    id: workflow:create
+    description: create workflow
+    steps:
+      - order: 1
+        action: "do thing"
+failures:
+  - id: failure:broken
+    symptom: breaks
+    cause: bad
+    fix: fix it
+examples:
+  - id: example:one
+    language: rust
+---
+Body text describing the package.
+"#;
+
+    #[test]
+    fn test_parse_kind_variants() {
+        assert_eq!(parse_kind("api"), NodeKind::API);
+        assert_eq!(parse_kind("FailureMode"), NodeKind::FailureMode);
+        assert_eq!(parse_kind("failuremode"), NodeKind::FailureMode);
+        assert_eq!(parse_kind("decision"), NodeKind::Decision);
+        assert_eq!(parse_kind("CLASS"), NodeKind::Class);
+        assert_eq!(parse_kind("unknown_thing"), NodeKind::Concept);
+    }
+
+    #[test]
+    fn test_parse_from_str_package() {
+        let doc = MdDocument::parse_from_str("demo", Path::new("demo.md"), PKG_MD).unwrap();
+        let (nodes, edges, examples, failures, workflows) = doc.into_parts();
+
+        // main + concept + api + workflow nodes
+        assert_eq!(nodes.len(), 4);
+        assert_eq!(nodes[0].kind, NodeKind::Package);
+        assert_eq!(nodes[0].name, "Demo Package");
+        assert_eq!(nodes[0].version.as_deref(), Some("1.0.0"));
+
+        // concept + api + workflow nodes present
+        let kinds: Vec<NodeKind> = nodes.iter().map(|n| n.kind.clone()).collect();
+        assert!(kinds.contains(&NodeKind::Concept));
+        assert!(kinds.contains(&NodeKind::API));
+        assert!(kinds.contains(&NodeKind::Workflow));
+
+        // edges: concept+api+workflow PartOf, example HasExample, failure HasFailure
+        assert_eq!(edges.len(), 5);
+        let edge_types: Vec<EdgeType> = edges.iter().map(|e| e.edge_type.clone()).collect();
+        assert!(edge_types.contains(&EdgeType::PartOf));
+        assert!(edge_types.contains(&EdgeType::HasExample));
+        assert!(edge_types.contains(&EdgeType::HasFailure));
+
+        assert_eq!(examples.len(), 1);
+        assert_eq!(failures.len(), 1);
+        assert_eq!(workflows.len(), 1);
+        assert_eq!(workflows[0].steps.len(), 1);
+    }
+
+    #[test]
+    fn test_parse_from_str_kind_api() {
+        let md = "---\nkind: API\nid: api:thing\nname: Thing\n---\nbody\n";
+        let doc = MdDocument::parse_from_str("t", Path::new("t.md"), md).unwrap();
+        let (nodes, _edges, _ex, _f, _w) = doc.into_parts();
+        assert_eq!(nodes[0].kind, NodeKind::API);
+        assert_eq!(nodes[0].name, "Thing");
+    }
+
+    #[test]
+    fn test_parse_no_frontmatter_errors() {
+        let r = MdDocument::parse_from_str("x", Path::new("x.md"), "no frontmatter at all");
+        assert!(r.is_err());
+    }
+
+    #[test]
+    fn test_parse_missing_id_errors() {
+        let md = "---\nkind: Package\nname: NoId\n---\nbody\n";
+        let r = MdDocument::parse_from_str("x", Path::new("x.md"), md);
+        assert!(r.is_err());
+    }
+
+    #[test]
+    fn test_parse_dependencies_and_extends_edges() {
+        let md = r#"---
+kind: Package
+id: package:child
+name: Child
+dependencies: [package:parent]
+extends: [package:base]
+uses: [api:other]
+alternatives: [package:alt]
+---
+body
+"#;
+        let doc = MdDocument::parse_from_str("c", Path::new("c.md"), md).unwrap();
+        let (_nodes, edges, _ex, _f, _w) = doc.into_parts();
+        let types: Vec<EdgeType> = edges.iter().map(|e| e.edge_type.clone()).collect();
+        assert!(types.contains(&EdgeType::DependsOn));
+        assert!(types.contains(&EdgeType::Extends));
+        assert!(types.contains(&EdgeType::Uses));
+        assert!(types.contains(&EdgeType::AlternativeTo));
+    }
+}

@@ -137,3 +137,124 @@ impl<'a> Verifier<'a> {
 fn infer_api_kind(_edge: &atlas_ir::Edge) -> bool {
     true
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use atlas_ir::{Edge, EdgeType, FailureMode, Meta, Node, NodeKind, NodeStatus, SourceRef};
+
+    fn ref_() -> SourceRef {
+        SourceRef {
+            source_id: "s".into(),
+            locator: "l".into(),
+            line: None,
+            hash: "h".into(),
+        }
+    }
+
+    fn node(id: &str, kind: NodeKind, name: &str) -> Node {
+        Node {
+            id: id.into(),
+            kind,
+            name: name.into(),
+            version: None,
+            category: None,
+            provenance: vec![ref_()],
+            confidence: 1.0,
+            status: NodeStatus::Verified,
+            description: Some(format!("desc {}", name)),
+            attributes: serde_json::json!({}),
+        }
+    }
+
+    fn compliant_ir() -> EngineeringIR {
+        let mut ir = EngineeringIR::new(Meta {
+            schema_version: "0.1.0".into(),
+            generator: "t".into(),
+            created_at: 0,
+            source_manifest: Vec::new(),
+        });
+        ir.add_node(node("package:p", NodeKind::Package, "P"));
+        ir.add_node(node("concept:a", NodeKind::Concept, "A"));
+        ir.add_node(node("api:b", NodeKind::API, "build"));
+        ir.add_edge(Edge {
+            id: "e1".into(),
+            src: "package:p".into(),
+            dst: "concept:a".into(),
+            edge_type: EdgeType::PartOf,
+            weight: 1.0,
+            provenance: ref_(),
+        });
+        ir.add_edge(Edge {
+            id: "e2".into(),
+            src: "package:p".into(),
+            dst: "api:b".into(),
+            edge_type: EdgeType::PartOf,
+            weight: 1.0,
+            provenance: ref_(),
+        });
+        ir.failure_modes.push(FailureMode {
+            id: "failure:f".into(),
+            symptom: "s".into(),
+            cause: "c".into(),
+            fix: "fix it".into(),
+            affects: vec!["package:p".into()],
+            version_range: None,
+        });
+        ir
+    }
+
+    #[test]
+    fn test_verify_passes_for_compliant_ir() {
+        let ir = compliant_ir();
+        let v = Verifier::new(&ir);
+        let report = v.verify(None);
+        assert!(report.passed, "checks: {:?}", report.checks.iter().map(|c| &c.message).collect::<Vec<_>>());
+        assert!(!report.checks.is_empty());
+    }
+
+    #[test]
+    fn test_verify_artifact_known_api_passes() {
+        let ir = compliant_ir();
+        let v = Verifier::new(&ir);
+        let report = v.verify(Some("call build() here"));
+        assert!(report.passed);
+    }
+
+    #[test]
+    fn test_verify_artifact_unknown_api_fails() {
+        let ir = compliant_ir();
+        let v = Verifier::new(&ir);
+        let report = v.verify(Some("use foo::bar() now"));
+        assert!(!report.passed);
+        assert!(report.checks.iter().any(|c| c.name == "Artifact API usage" && !c.passed));
+    }
+
+    #[test]
+    fn test_verify_missing_node_in_edge_fails() {
+        let mut ir = compliant_ir();
+        ir.add_edge(Edge {
+            id: "e3".into(),
+            src: "package:p".into(),
+            dst: "concept:ghost".into(),
+            edge_type: EdgeType::PartOf,
+            weight: 1.0,
+            provenance: ref_(),
+        });
+        let v = Verifier::new(&ir);
+        let report = v.verify(None);
+        assert!(!report.passed);
+        assert!(report.checks.iter().any(|c| c.name == "API existence" && !c.passed));
+    }
+
+    #[test]
+    fn test_check_versions_is_warn_and_passes() {
+        let ir = compliant_ir();
+        let v = Verifier::new(&ir);
+        let report = v.verify(None);
+        let cv = report.checks.iter().find(|c| c.name == "Version consistency").unwrap();
+        assert_eq!(cv.severity, "warn");
+        assert!(cv.passed);
+    }
+}
+

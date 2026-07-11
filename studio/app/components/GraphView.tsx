@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo } from "react";
 import {
   ReactFlow,
   MiniMap,
@@ -12,7 +12,6 @@ import {
   Edge,
   NodeTypes,
   MarkerType,
-  Panel,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import dagre from "@dagrejs/dagre";
@@ -118,7 +117,15 @@ export default function GraphView({ atlasNodes, atlasEdges, onNodeClick }: Graph
   const layouted = useMemo(() => dagreLayout(flowNodes, flowEdges, "LR"), [flowNodes, flowEdges]);
 
   const [nodes, setNodes, onNodesChange] = useNodesState(layouted);
-  const [edges, , onEdgesChange] = useEdgesState(flowEdges);
+  const [edges, setEdges, onEdgesChange] = useEdgesState(flowEdges);
+
+  useEffect(() => {
+    setNodes(layouted);
+  }, [layouted, setNodes]);
+
+  useEffect(() => {
+    setEdges(flowEdges);
+  }, [flowEdges, setEdges]);
 
   const onNodeClickHandler = useCallback(
     (_: React.MouseEvent, node: Node) => {
