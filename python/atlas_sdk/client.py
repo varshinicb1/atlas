@@ -72,7 +72,7 @@ def _find_binary() -> str:
 
     raise RuntimeError(
         "Could not find the `atlas` CLI binary. "
-        "Install it with: cargo install --path atlas-cli"
+        "Install it with: cargo install atlas-knowledge-cli"
     )
 
 

@@ -4,7 +4,7 @@
 [![Release](https://img.shields.io/github/v/release/varshinicb1/atlas?label=release)](https://github.com/varshinicb1/atlas/releases)
 [![License: Apache 2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Rust](https://img.shields.io/badge/made%20with-Rust-orange.svg)](https://www.rust-lang.org/)
-[![Crates.io](https://img.shields.io/crates/v/atlas-cli?label=crates.io)](https://crates.io/crates/atlas-cli)
+[![Crates.io](https://img.shields.io/crates/v/atlas-knowledge-cli?label=crates.io)](https://crates.io/crates/atlas-knowledge-cli)
 [![Downloads](https://img.shields.io/github/downloads/varshinicb1/atlas/total)](https://github.com/varshinicb1/atlas/releases)
 [![Dependabot](https://img.shields.io/badge/dependabot-enabled-brightgreen.svg)](.github/dependabot.yml)
 [![Website](https://img.shields.io/badge/website-atlas--sh.pages.dev-blue)](https://atlas-sh.pages.dev)
@@ -40,7 +40,7 @@ See [benchmarks vs smolagents](docs/benchmarks-vs-smolagents.md).
 
 ```bash
 # From crates.io
-cargo install atlas-cli
+cargo install atlas-knowledge-cli
 
 # Download prebuilt binaries
 # Grab the latest `atlas` binary for your platform from:

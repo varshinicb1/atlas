@@ -20,7 +20,7 @@ Build Atlas into a billion-dollar company: the Knowledge Operating System that m
 - Compliance: `atlas verify --policy eu-ai-act`
 - Benchmarks: `docs/benchmarks-vs-smolagents.md`
 - CI: Build, test, clippy, compile-all, validate-all, website check, registry check (7/7 green)
-- Binary name: `atlas` (was `atlas-cli`). Searches `atlas` first, fallback to `atlas-cli`
+- Binary name: `atlas` (was `atlas-cli`). Searches `atlas` first, fallback to `atlas-cli`. Crate name is `atlas-knowledge-cli` on crates.io.
 - All URLs use free Cloudflare subdomains (no custom domain needed)
 
 ### Enterprise Features

@@ -31,7 +31,7 @@ export function findBinary(): string {
     }
   }
 
-  throw new Error("atlas CLI binary not found. Install with: cargo install --path atlas-cli");
+  throw new Error("atlas CLI binary not found. Install with: cargo install atlas-knowledge-cli");
 }
 
 export function resolvePath(p: string): string {

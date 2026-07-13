@@ -115,6 +115,6 @@ jobs:
       - name: Publish atlas-knowledge
         run: cargo publish -p atlas-knowledge --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
         continue-on-error: true
-      - name: Publish atlas-cli
-        run: cargo publish -p atlas-cli --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
+      - name: Publish atlas-knowledge-cli
+        run: cargo publish -p atlas-knowledge-cli --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
         continue-on-error: true

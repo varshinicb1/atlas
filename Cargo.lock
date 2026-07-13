@@ -101,7 +101,7 @@ dependencies = [
  "anyhow",
  "atlas-compiler",
  "atlas-ir",
- "atlas-runtime",
+ "atlas-knowledge",
  "clap",
  "dirs",
  "env_logger",
@@ -136,7 +136,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "atlas-runtime"
+name = "atlas-knowledge"
 version = "0.3.0"
 dependencies = [
  "anyhow",
