@@ -96,7 +96,7 @@ checksum = "d3fb67a6e08acf24fdeccbac2cb6ac4305825bd1f117462e0e6f2f193345ad56"
 
 [[package]]
 name = "atlas-compiler"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "anyhow",
  "atlas-ir",
@@ -111,7 +111,7 @@ dependencies = [
 
 [[package]]
 name = "atlas-ir"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "anyhow",
  "blake3",
@@ -121,7 +121,7 @@ dependencies = [
 
 [[package]]
 name = "atlas-knowledge"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "anyhow",
  "atlas-compiler",
@@ -136,7 +136,7 @@ dependencies = [
 
 [[package]]
 name = "atlas-knowledge-cli"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "anyhow",
  "atlas-compiler",
