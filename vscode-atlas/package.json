@@ -28,7 +28,7 @@
     "test": "node --test out/test/cliArgs.test.js"
   },
   "devDependencies": {
-    "@types/node": "^20",
+    "@types/node": "^26",
     "@types/vscode": "^1.96.0",
     "typescript": "^5"
   },
