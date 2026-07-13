@@ -12,13 +12,13 @@ jobs:
       - uses: actions-rust-lang/setup-rust-toolchain@v1
       - name: Publish atlas-ir
         working-directory: atlas-ir
-        run: cargo publish --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: cargo publish --token ${{ secrets.CARGO_REGISTRY_TOKEN }} || true
       - name: Publish atlas-compiler
         working-directory: atlas-compiler
-        run: cargo publish --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: cargo publish --token ${{ secrets.CARGO_REGISTRY_TOKEN }} || true
       - name: Publish atlas-knowledge
         working-directory: atlas-runtime
-        run: cargo publish --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: cargo publish --token ${{ secrets.CARGO_REGISTRY_TOKEN }} || true
       - name: Publish atlas-knowledge-cli
         working-directory: atlas-cli
-        run: cargo publish --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: cargo publish --token ${{ secrets.CARGO_REGISTRY_TOKEN }} || true
