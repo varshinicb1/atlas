@@ -17,26 +17,16 @@ import "@xyflow/react/dist/style.css";
 import dagre from "@dagrejs/dagre";
 import { AtlasNode, AtlasEdge, getNodeColor } from "../lib/api";
 
-function dagreLayout(
-  nodes: Node[],
-  edges: Edge[],
-  direction: "LR" | "TB" = "LR"
-) {
+function dagreLayout(nodes: Node[], edges: Edge[], direction: "LR" | "TB" = "LR") {
   const g = new dagre.graphlib.Graph();
   g.setDefaultEdgeLabel(() => ({}));
   g.setGraph({ rankdir: direction, nodesep: 60, ranksep: 100, marginx: 20, marginy: 20 });
-
   edges.forEach((e) => g.setEdge(e.source, e.target));
   nodes.forEach((n) => g.setNode(n.id, { width: 180, height: 60 }));
-
   dagre.layout(g);
-
   return nodes.map((n) => {
     const pos = g.node(n.id);
-    return {
-      ...n,
-      position: { x: pos.x - 90, y: pos.y - 30 },
-    };
+    return { ...n, position: { x: pos.x - 90, y: pos.y - 30 } };
   });
 }
 
@@ -44,6 +34,7 @@ function AtlasNodeComponent({ data }: { data: { label: string; kind: string; id:
   const color = getNodeColor(data.kind);
   return (
     <div
+      className="atlas-node"
       style={{
         border: `2px solid ${color}`,
         borderRadius: 8,
@@ -53,12 +44,31 @@ function AtlasNodeComponent({ data }: { data: { label: string; kind: string; id:
         minWidth: 150,
         maxWidth: 220,
         boxShadow: "0 1px 3px rgba(0,0,0,0.12)",
+        cursor: "pointer",
       }}
     >
-      <div style={{ fontSize: 10, color, fontWeight: 600, textTransform: "uppercase", letterSpacing: 1 }}>
+      <div
+        className="atlas-node-kind"
+        style={{
+          fontSize: 10,
+          color,
+          fontWeight: 600,
+          textTransform: "uppercase",
+          letterSpacing: 1,
+        }}
+      >
         {data.kind}
       </div>
-      <div style={{ fontWeight: 500, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+      <div
+        className="atlas-node-label"
+        style={{
+          fontWeight: 500,
+          marginTop: 2,
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap",
+        }}
+      >
         {data.label}
       </div>
     </div>
@@ -121,11 +131,8 @@ export default function GraphView({ atlasNodes, atlasEdges, onNodeClick }: Graph
 
   useEffect(() => {
     setNodes(layouted);
-  }, [layouted, setNodes]);
-
-  useEffect(() => {
     setEdges(flowEdges);
-  }, [flowEdges, setEdges]);
+  }, [layouted, flowEdges, setNodes, setEdges]);
 
   const onNodeClickHandler = useCallback(
     (_: React.MouseEvent, node: Node) => {
@@ -136,7 +143,7 @@ export default function GraphView({ atlasNodes, atlasEdges, onNodeClick }: Graph
   );
 
   return (
-    <div style={{ width: "100%", height: "100%" }}>
+    <div className="graph-container">
       <ReactFlow
         nodes={nodes}
         edges={edges}

@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Atlas — The Knowledge Operating System</title>
-  <meta name="description" content="Atlas makes AI agents deterministic, verifiable, and compliant. Separate knowledge from reasoning. The Terraform for agent knowledge." />
+  <title>Atlas — The Knowledge Operating System for AI Agents</title>
+  <meta name="description" content="Atlas is the Terraform for AI agent knowledge. Separate knowledge from reasoning: compile verifiable, deterministic decision trees into a portable binary your agents can trust — without an LLM call." />
   <link rel="stylesheet" href="/css/style.css" />
   <link rel="preload" href="/css/fonts.css" as="style" />
 </head>
@@ -17,6 +17,8 @@
           <a href="#product">Product</a>
           <a href="#registry">Registry</a>
           <a href="https://github.com/varshinicb1/atlas" target="_blank">GitHub</a>
+          <a href="/docs/">Docs</a>
+          <a href="https://atlas-studio-1o9.pages.dev" target="_blank">Studio</a>
           <a href="#enterprise">Enterprise</a>
           <a href="#install" class="nav-cta">Install</a>
         </div>
@@ -27,13 +29,12 @@
   <section class="hero">
     <div class="hero-bg"></div>
     <div class="hero-content">
-      <p class="hero-badge">Deterministic AI Agent Knowledge</p>
-      <h1>Stop trusting LLMs.<br />Start trusting <em>knowledge</em>.</h1>
+      <p class="hero-badge">Knowledge Operating System for AI Agents</p>
+      <h1>The Terraform for<br />AI agent <em>knowledge</em>.</h1>
       <p class="hero-sub">
-        Atlas separates <strong>knowledge</strong> from <strong>reasoning</strong>.
-        A compiled, verifiable, cryptographically-signed binary that lets AI agents
-        make decisions <em>without</em> an LLM call — 100x cheaper, 1000x faster,
-        provably correct.
+        Atlas separates <strong>knowledge</strong> from <strong>reasoning</strong>. Compile verifiable,
+        deterministic decision trees into a portable <code>.atlas</code> binary — so your agents make the
+        right call without an LLM call. Built for people and the agents working alongside them.
       </p>
       <div class="hero-actions">
         <a href="#install" class="btn btn-primary">Install Atlas</a>
@@ -43,10 +44,10 @@
         </a>
       </div>
       <div class="hero-stats" id="heroStats">
-        <div class="stat"><span class="stat-value">280+</span> Knowledge Nodes</div>
-        <div class="stat"><span class="stat-value">480+</span> Edges</div>
-        <div class="stat"><span class="stat-value">13</span> Packages</div>
+        <div class="stat"><span class="stat-value">51</span> Knowledge Packages</div>
         <div class="stat"><span class="stat-value">0</span> LLM Calls Needed</div>
+        <div class="stat"><span class="stat-value">100%</span> Verified by Design</div>
+        <div class="stat"><span class="stat-value">Apache 2.0</span> Open Source</div>
       </div>
     </div>
   </section>
@@ -54,28 +55,36 @@
   <!-- Problem -->
   <section class="section problem" id="problem">
     <div class="section-inner">
-      <h2>The problem with every AI agent framework</h2>
-      <p class="section-sub">LangChain, CrewAI, AutoGen, smolagents — they all share the same fatal flaw.</p>
+      <h2>Prompt-only agents don't scale</h2>
+      <p class="section-sub">LangChain, CrewAI, AutoGen, smolagents — every LLM-first framework shares the same flaw: knowledge lives in the context window.</p>
       <div class="problem-grid">
         <div class="problem-card">
-          <div class="problem-icon">🧠</div>
+          <div class="problem-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M8 9h8M8 13h8M8 17h5"/></svg>
+          </div>
           <h3>Knowledge is whatever fits in the prompt</h3>
-          <p>Every framework treats knowledge as "stuff in the context window." No structure, no persistence, no verification.</p>
+          <p>No structure, no persistence, no verification. The same question gets a different answer every run.</p>
         </div>
         <div class="problem-card">
-          <div class="problem-icon">💰</div>
+          <div class="problem-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="6" width="18" height="12" rx="2"/><circle cx="12" cy="12" r="2.5"/></svg>
+          </div>
           <h3>Every decision costs money</h3>
-          <p>Each agent step requires an LLM call. At $0.10-1.00+ per decision, production agents bleed cash.</p>
+          <p>Each agent step is an LLM call. At $0.10–1.00+ per decision, production agents bleed cash on questions with known answers.</p>
         </div>
         <div class="problem-card">
-          <div class="problem-icon">🔮</div>
+          <div class="problem-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.8.4-1 1-1 1.7"/><circle cx="12" cy="16.5" r=".6" fill="currentColor"/></svg>
+          </div>
           <h3>No deterministic fallback</h3>
-          <p>When the LLM hallucinates, there's no safety net. No verification, no audit trail, no replay.</p>
+          <p>When the model hallucinates there's no safety net — no verification, no audit trail, no replay.</p>
         </div>
         <div class="problem-card">
-          <div class="problem-icon">⚖️</div>
+          <div class="problem-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M12 8v4M12 16h.01"/></svg>
+          </div>
           <h3>No compliance by design</h3>
-          <p>EU AI Act fines start at €15M on August 2, 2026. Today's frameworks can't explain why an agent did what it did.</p>
+          <p>EU AI Act obligations demand you explain why an agent did what it did. Prompt-only systems can't.</p>
         </div>
       </div>
     </div>
@@ -85,7 +94,7 @@
   <section class="section solution" id="product">
     <div class="section-inner">
       <h2>Knowledge as Code. <em>Decision Trees as Infrastructure.</em></h2>
-      <p class="section-sub">Atlas is a new kind of operating system — not for computers, but for engineering knowledge.</p>
+      <p class="section-sub">Atlas is an operating system for engineering knowledge — not for computers, but for the agents that reason on top of them.</p>
       <div class="solution-show">
         <div class="terminal-window">
           <div class="terminal-header">
@@ -108,27 +117,39 @@
         </div>
         <div class="solution-features">
           <div class="feature">
-            <div class="feature-icon">✅</div>
+            <div class="feature-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h7l-1 8 10-12h-7l1-8z"/></svg>
+            </div>
             <div><strong>Deterministic</strong> — Decision trees run with zero LLM calls</div>
           </div>
           <div class="feature">
-            <div class="feature-icon">🔍</div>
+            <div class="feature-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 11l2 2 4-4"/></svg>
+            </div>
             <div><strong>Verifiable</strong> — Every output is checked against built-in rules</div>
           </div>
           <div class="feature">
-            <div class="feature-icon">🔗</div>
-            <div><strong>Composable</strong> — Merge knowledge packages like Docker images</div>
+            <div class="feature-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 12l10 5 10-5"/><path d="M2 17l10 5 10-5"/></svg>
+            </div>
+            <div><strong>Composable</strong> — Merge knowledge packages like container images</div>
           </div>
           <div class="feature">
-            <div class="feature-icon">📦</div>
-            <div><strong>Portable</strong> — Single .atlas binary, memory-mapped, signed</div>
+            <div class="feature-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><path d="M3.27 6.96L12 12l8.73-5.04M12 22.08V12"/></svg>
+            </div>
+            <div><strong>Portable</strong> — Single <code>.atlas</code> binary, memory-mapped, signed</div>
           </div>
           <div class="feature">
-            <div class="feature-icon">🔐</div>
+            <div class="feature-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+            </div>
             <div><strong>Auditable</strong> — Cryptographic audit trails for every decision</div>
           </div>
           <div class="feature">
-            <div class="feature-icon">✈️</div>
+            <div class="feature-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3l18 18"/><path d="M17.5 19A4.5 4.5 0 0 0 19 11.5 6 6 0 0 0 6 9.5"/></svg>
+            </div>
             <div><strong>Offline</strong> — Full air-gapped deployment. No API calls needed</div>
           </div>
         </div>
@@ -146,13 +167,13 @@
           <h3>Write knowledge as Markdown</h3>
           <p>Concepts, APIs, workflows — all in a simple, human-readable format.</p>
         </div>
-        <div class="step-arrow">→</div>
+        <div class="step-arrow">&rarr;</div>
         <div class="step">
           <div class="step-number">2</div>
-          <h3>Compile to .atlas binary</h3>
+          <h3>Compile to <code>.atlas</code> binary</h3>
           <p>Zstd-compressed, memory-mapped, blake3-hashed. Portable across any platform.</p>
         </div>
-        <div class="step-arrow">→</div>
+        <div class="step-arrow">&rarr;</div>
         <div class="step">
           <div class="step-number">3</div>
           <h3>Run agents on top</h3>
@@ -166,7 +187,7 @@
   <section class="section registry" id="registry">
     <div class="section-inner">
       <h2>Knowledge Package Registry</h2>
-          <p class="section-sub">Share, discover, and reuse knowledge packages. Like Docker Hub, but for agent knowledge. <strong>13 packages</strong> and growing.</p>
+          <p class="section-sub">Share, discover, and reuse knowledge packages. Like a container registry, but for agent knowledge. <strong>51 packages</strong> and growing.</p>
           <div class="registry-search">
             <input type="text" id="registrySearch" placeholder="Search packages by name, language, or framework..." oninput="searchPackages(this.value)" />
           </div>
@@ -194,7 +215,7 @@
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
           </div>
           <h3>GDPR Compliance</h3>
-          <p>DSAR, data portability export, and right to erasure endpoints. Built for SOC2 and EU AI Act readiness.</p>
+          <p>DSAR, data portability export, and right to erasure endpoints. Built for SOC 2 and EU AI Act readiness.</p>
         </div>
         <div class="enterprise-card">
           <div class="ent-icon">
@@ -271,83 +292,83 @@
           <tbody>
             <tr>
               <td>Deterministic decisions</td>
-              <td class="yes">✅ LLM-free</td>
-              <td class="no">❌</td>
-              <td class="no">❌</td>
-              <td class="no">❌</td>
-              <td class="no">❌</td>
+              <td class="yes"><span class="mark mark-yes">Yes</span> LLM-free</td>
+              <td class="no">No</td>
+              <td class="no">No</td>
+              <td class="no">No</td>
+              <td class="no">No</td>
             </tr>
             <tr>
               <td>Built-in verification</td>
-              <td class="yes">✅</td>
-              <td class="no">❌</td>
-              <td class="partial">⚠️ Manual</td>
-              <td class="no">❌</td>
-              <td class="no">❌</td>
+              <td class="yes"><span class="mark mark-yes">Yes</span></td>
+              <td class="no">No</td>
+              <td class="partial"><span class="mark mark-partial">Manual</span></td>
+              <td class="no">No</td>
+              <td class="no">No</td>
             </tr>
             <tr>
               <td>Knowledge composition</td>
-              <td class="yes">✅</td>
-              <td class="no">❌</td>
-              <td class="partial">⚠️ RAG</td>
-              <td class="no">❌</td>
-              <td class="no">❌</td>
+              <td class="yes"><span class="mark mark-yes">Yes</span></td>
+              <td class="no">No</td>
+              <td class="partial"><span class="mark mark-partial">RAG</span></td>
+              <td class="no">No</td>
+              <td class="no">No</td>
             </tr>
             <tr>
               <td>Offline / Air-gapped</td>
-              <td class="yes">✅</td>
-              <td class="no">❌</td>
-              <td class="partial">⚠️ Partial</td>
-              <td class="no">❌</td>
-              <td class="no">❌</td>
+              <td class="yes"><span class="mark mark-yes">Yes</span></td>
+              <td class="no">No</td>
+              <td class="partial"><span class="mark mark-partial">Partial</span></td>
+              <td class="no">No</td>
+              <td class="no">No</td>
             </tr>
             <tr>
               <td>Audit trail</td>
-              <td class="yes">✅ Crypto</td>
-              <td class="no">❌</td>
-              <td class="partial">⚠️ LangSmith</td>
-              <td class="no">❌</td>
-              <td class="no">❌</td>
+              <td class="yes"><span class="mark mark-yes">Yes</span> Crypto</td>
+              <td class="no">No</td>
+              <td class="partial"><span class="mark mark-partial">LangSmith</span></td>
+              <td class="no">No</td>
+              <td class="no">No</td>
             </tr>
             <tr>
               <td>SSO / OIDC</td>
-              <td class="yes">✅</td>
-              <td class="no">❌</td>
-              <td class="no">❌</td>
-              <td class="no">❌</td>
-              <td class="no">❌</td>
+              <td class="yes"><span class="mark mark-yes">Yes</span></td>
+              <td class="no">No</td>
+              <td class="no">No</td>
+              <td class="no">No</td>
+              <td class="no">No</td>
             </tr>
             <tr>
               <td>GDPR compliance</td>
-              <td class="yes">✅</td>
-              <td class="no">❌</td>
-              <td class="no">❌</td>
-              <td class="no">❌</td>
-              <td class="no">❌</td>
+              <td class="yes"><span class="mark mark-yes">Yes</span></td>
+              <td class="no">No</td>
+              <td class="no">No</td>
+              <td class="no">No</td>
+              <td class="no">No</td>
             </tr>
             <tr>
               <td>Cost per query</td>
               <td class="yes">~$0.0001</td>
-              <td>$0.10-1.00</td>
-              <td>$0.10-1.00</td>
-              <td>$0.10-1.00</td>
-              <td>$0.10-1.00</td>
+              <td>$0.10–1.00</td>
+              <td>$0.10–1.00</td>
+              <td>$0.10–1.00</td>
+              <td>$0.10–1.00</td>
             </tr>
             <tr>
               <td>EU AI Act ready</td>
-              <td class="yes">✅ Built-in</td>
-              <td class="no">❌</td>
-              <td class="no">❌</td>
-              <td class="no">❌</td>
-              <td class="no">❌</td>
+              <td class="yes"><span class="mark mark-yes">Yes</span> Built-in</td>
+              <td class="no">No</td>
+              <td class="no">No</td>
+              <td class="no">No</td>
+              <td class="no">No</td>
             </tr>
             <tr>
               <td>Open source</td>
-              <td class="yes">✅</td>
-              <td class="yes">✅</td>
-              <td class="yes">✅</td>
-              <td class="yes">✅</td>
-              <td class="yes">✅</td>
+              <td class="yes"><span class="mark mark-yes">Yes</span></td>
+              <td class="yes"><span class="mark mark-yes">Yes</span></td>
+              <td class="yes"><span class="mark mark-yes">Yes</span></td>
+              <td class="yes"><span class="mark mark-yes">Yes</span></td>
+              <td class="yes"><span class="mark mark-yes">Yes</span></td>
             </tr>
           </tbody>
         </table>
@@ -360,7 +381,7 @@
     <div class="footer-inner">
       <div class="footer-col">
         <div class="footer-logo">Atlas</div>
-        <p>The Knowledge Operating System for AI agents.</p>
+        <p>The Knowledge Operating System for AI agents. Built for people and the agents working alongside them.</p>
       </div>
       <div class="footer-col">
         <h4>Product</h4>

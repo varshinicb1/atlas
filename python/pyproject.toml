@@ -4,11 +4,30 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "atlas-sdk"
-version = "0.1.0"
-description = "Python SDK for Atlas Knowledge Operating System"
+version = "0.3.0"
+description = "Python SDK for the Atlas Knowledge Operating System — Terraform for AI agent knowledge"
 license = { "text" = "MIT" }
 readme = "README.md"
 requires-python = ">=3.9"
+authors = [{ name = "Atlas Knowledge", email = "varshinicb1@gmail.com" }]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+keywords = ["atlas", "knowledge", "ai", "agent", "decision-tree"]
+
+[project.urls]
+Homepage = "https://atlas-sh.pages.dev"
+Documentation = "https://atlas-sh.pages.dev/docs/"
+Repository = "https://github.com/varshinicb1/atlas"
 
 [tool.setuptools.packages.find]
 where = ["."]
@@ -19,4 +38,3 @@ test = ["pytest>=7"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
-

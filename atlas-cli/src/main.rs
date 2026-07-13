@@ -5,6 +5,7 @@ use atlas_compiler::frontends::MdDocument;
 use atlas_compiler::frontends::decision::DecisionParser;
 use atlas_compiler::binary;
 use atlas_runtime::reasoner::Reasoner;
+use atlas_runtime::loader::AtlasBundle;
 
 mod templates;
 
@@ -95,6 +96,83 @@ enum Commands {
         #[arg(long)]
         api_key: Option<String>,
     },
+    /// Clone a website as a template knowledge package
+    Clone {
+        /// URL of the website to clone
+        url: String,
+        /// Name for the template (defaults to domain name)
+        #[arg(short, long)]
+        name: Option<String>,
+        /// Output directory (defaults to ./<name>)
+        #[arg(short, long)]
+        dir: Option<PathBuf>,
+        /// Also download CSS and JS assets
+        #[arg(long, default_value_t = false)]
+        assets: bool,
+        /// Rebuild as Next.js project skeleton (ai-website-cloner style)
+        #[arg(long, default_value_t = false)]
+        rebuild: bool,
+    },
+    /// Export an .atlas bundle to LLM-friendly formats (XML/Markdown/JSON)
+    Export {
+        /// Path to the .atlas bundle
+        #[arg(short, long, default_value = "bundle.atlas")]
+        bundle: PathBuf,
+        /// Output format: xml, markdown, json, plain
+        #[arg(short, long, default_value = "xml")]
+        style: String,
+        /// Output file path (defaults to bundle-export.xml)
+        #[arg(short, long)]
+        out: Option<PathBuf>,
+        /// Show token count estimate
+        #[arg(long, default_value_t = false)]
+        tokens: bool,
+    },
+    /// Generate or install agent skills from Atlas packages (agentic-awesome-skills compatible)
+    Skill {
+        /// Subcommand: generate, install, search, list
+        #[command(subcommand)]
+        action: SkillAction,
+    },
+}
+
+#[derive(Subcommand)]
+enum SkillAction {
+    /// Generate a SKILL.md from an Atlas package for AI coding assistants
+    Generate {
+        /// Path to the .atlas bundle or .md file
+        path: PathBuf,
+        /// Output path for SKILL.md (defaults to ./SKILL.md)
+        #[arg(short, long)]
+        out: Option<PathBuf>,
+        /// Skill name (defaults to package name)
+        #[arg(short, long)]
+        name: Option<String>,
+        /// Risk level: safe, none, dangerous, risky, critical
+        #[arg(long, default_value = "safe")]
+        risk: String,
+        /// Category tags (comma-separated)
+        #[arg(long, default_value = "development")]
+        category: String,
+    },
+    /// Search the agentic-awesome-skills registry for skills
+    Search {
+        /// Search query
+        query: String,
+        /// Max results
+        #[arg(short, long, default_value_t = 10)]
+        limit: usize,
+    },
+    /// List all installed skills
+    List,
+    /// Install skills from agentic-awesome-skills
+    Install {
+        /// Skill IDs or categories to install
+        skills: Vec<String>,
+        /// Output directory for skills (defaults to .agents/skills)
+        #[arg(short, long)]
+        dir: Option<PathBuf>,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -126,6 +204,14 @@ fn main() -> Result<(), anyhow::Error> {
         Commands::Init { name, template, dir } => run_init(&name, &template, dir.as_ref()),
         Commands::Search { query, registry } => run_search(&query, &registry, cli.json),
         Commands::Publish { path, registry, api_key } => run_publish(path, &registry, api_key.as_deref(), cli.json),
+        Commands::Clone { url, name, dir, assets, rebuild } => run_clone(&url, name.as_deref(), dir.as_ref(), assets, rebuild, cli.json),
+        Commands::Export { bundle, style, out, tokens } => run_export(&bundle, &style, out.as_ref(), tokens, cli.json),
+        Commands::Skill { action } => match action {
+            SkillAction::Generate { path, out, name, risk, category } => run_skill_generate(&path, out.as_ref(), name.as_deref(), &risk, &category, cli.json),
+            SkillAction::Search { query, limit } => run_skill_search(&query, limit, cli.json),
+            SkillAction::List => run_skill_list(cli.json),
+            SkillAction::Install { skills, dir } => run_skill_install(&skills, dir.as_ref(), cli.json),
+        },
     }
 }
 
@@ -202,12 +288,16 @@ fn compile_md(compiler: &mut Compiler, path: &PathBuf) -> Result<(), anyhow::Err
     let source_id = path.file_stem().and_then(|s| s.to_str()).unwrap_or("doc");
     let content = std::fs::read_to_string(path)?;
     let doc = MdDocument::parse_from_str(source_id, path, &content)?;
+    let trees = doc.decision_trees().to_vec();
     let (nodes, edges, examples, failures, workflows) = doc.into_parts();
     for node in nodes { compiler.add_node(node)?; }
     for edge in edges { compiler.add_edge(edge)?; }
     for ex in examples { compiler.add_example(ex); }
     for fm in failures { compiler.add_failure(fm); }
     for wf in workflows { compiler.add_workflow(wf); }
+    if !trees.is_empty() {
+        compiler.add_decision_trees(trees);
+    }
     compiler.add_source(source_id, path, Some(&content))?;
     Ok(())
 }
@@ -629,6 +719,612 @@ fn run_publish(path: PathBuf, registry: &str, api_key: Option<&str>, json: bool)
         Err(e) => {
             anyhow::bail!("Failed to publish to {}: {}", registry, e);
         }
+    }
+    Ok(())
+}
+
+fn run_clone(url: &str, name: Option<&str>, dir: Option<&PathBuf>, assets: bool, rebuild: bool, json: bool) -> Result<(), anyhow::Error> {
+    // Basic URL validation and domain extraction
+    let url_lower = url.to_lowercase();
+    let domain = if url_lower.starts_with("http://") || url_lower.starts_with("https://") {
+        let without_proto = url.trim_start_matches("http://").trim_start_matches("https://");
+        without_proto.split('/').next().unwrap_or("unknown")
+    } else {
+        "unknown"
+    };
+    let name = name.unwrap_or(domain);
+    let target = dir.cloned().unwrap_or_else(|| PathBuf::from(name));
+
+    if target.exists() {
+        anyhow::bail!("Directory '{}' already exists", target.display());
+    }
+
+    let html_dir = target.join("template");
+    std::fs::create_dir_all(&html_dir)?;
+
+    println!("Cloning {} → {}", url, target.display());
+
+    let response = ureq::get(url)
+        .header("User-Agent", "AtlasClone/1.0")
+        .call()
+        .map_err(|e| anyhow::anyhow!("Failed to fetch {}: {}", url, e))?;
+
+    let status = response.status();
+    if status != 200 {
+        anyhow::bail!("HTTP {} from {}", status, url);
+    }
+
+    let body = response.into_body().read_to_string()?;
+    let html_path = html_dir.join("index.html");
+    std::fs::write(&html_path, &body)?;
+    let html_size = body.len();
+
+    if assets {
+        let mut asset_count = 0u32;
+        for line in body.lines() {
+            for (prefix, ext) in [("src=\"", "js"), ("href=\"", "css")] {
+                let mut search_start = 0;
+                while let Some(start) = line[search_start..].find(prefix) {
+                    let abs_start = search_start + start + prefix.len();
+                    if let Some(end) = line[abs_start..].find('"') {
+                        let asset_url = &line[abs_start..abs_start + end];
+                        if !asset_url.starts_with("http") {
+                            search_start = abs_start + end;
+                            continue;
+                        }
+                        if let Ok(asset_body) = ureq::get(asset_url)
+                            .header("User-Agent", "AtlasClone/1.0")
+                            .call()
+                            .map(|r| r.into_body().read_to_string().unwrap_or_default())
+                        {
+                            if !asset_body.is_empty() {
+                                let filename = format!("asset-{}.{}", asset_count, ext);
+                                std::fs::write(html_dir.join(&filename), &asset_body)?;
+                                asset_count += 1;
+                            }
+                        }
+                        search_start = abs_start + end;
+                    } else {
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    // Generate metadata knowledge package
+    if rebuild {
+        let src_dir = target.join("src");
+        let app_dir = src_dir.join("app");
+        let components_dir = src_dir.join("components");
+        let ui_dir = components_dir.join("ui");
+        let public_dir = target.join("public");
+        let images_dir = public_dir.join("images");
+        let docs_dir = target.join("docs");
+
+        for d in [&src_dir, &app_dir, &components_dir, &ui_dir, &public_dir, &images_dir, &docs_dir] {
+            std::fs::create_dir_all(d)?;
+        }
+
+        // layout.tsx
+        std::fs::write(
+            app_dir.join("layout.tsx"),
+            r#"import type { Metadata } from "next";
+import "./globals.css";
+
+export const metadata: Metadata = {
+  title: "Cloned Site",
+};
+
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  return (
+    <html lang="en">
+      <body>{children}</body>
+    </html>
+  );
+}
+"#,
+        )?;
+        std::fs::write(
+            app_dir.join("page.tsx"),
+            "export default function Home() {\n  return <main>Cloned from {url}</main>;\n}\n",
+        )?;
+        std::fs::write(
+            src_dir.join("globals.css"),
+            "@import \"tailwindcss\";\n\n:root {\n  /* Design tokens extracted from cloned site */\n}\n",
+        )?;
+        std::fs::write(
+            target.join("tailwind.config.ts"),
+            r#"import type { Config } from "tailwindcss";
+export default {
+  content: ["./src/**/*.{ts,tsx}"],
+  theme: {
+    extend: {
+      colors: {},
+      fontFamily: {},
+    },
+  },
+  plugins: [],
+} satisfies Config;
+"#,
+        )?;
+        std::fs::write(
+            target.join("tsconfig.json"),
+            r#"{
+  "compilerOptions": {
+    "target": "ES2017",
+    "lib": ["dom", "dom.iterable", "esnext"],
+    "allowJs": true,
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "jsx": "preserve",
+    "strict": true,
+    "paths": { "@/*": ["./src/*"] }
+  },
+  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
+  "exclude": ["node_modules"]
+}
+"#,
+        )?;
+        std::fs::write(
+            target.join("package.json"),
+            &format!(
+                r#"{{
+  "name": "{name}",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {{
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start"
+  }},
+  "dependencies": {{
+    "next": "^16.0.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  }},
+  "devDependencies": {{
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.0.0",
+    "tailwindcss": "^4.0.0",
+    "typescript": "^5.7.0"
+  }}
+}}
+"#,
+                name = name
+            ),
+        )?;
+        // specs directory for component specifications
+        let specs_dir = docs_dir.join("research").join("components");
+        std::fs::create_dir_all(&specs_dir)?;
+        std::fs::write(
+            specs_dir.join("overview.md"),
+            format!(
+                "# Component Specifications for {name}\n\nCloned from {url}\n\n## Extracted Sections\n\n1. Header/Navigation\n2. Hero Section\n3. Content Sections\n4. Footer\n\nSee individual spec files for exact computed values.\n"
+            ),
+        )?;
+    }
+
+    let title = name.replace(['-', '_', '.'], " ");
+    let title = title.split_whitespace().map(|w| {
+        let mut c = w.chars();
+        match c.next() {
+            Some(first) => first.to_uppercase().collect::<String>() + c.as_str(),
+            None => String::new(),
+        }
+    }).collect::<Vec<_>>().join(" ");
+
+    let today = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| {
+            let secs = d.as_secs();
+            let days = secs / 86400;
+            let y = 1970 + (days as f64 / 365.25) as u64;
+            format!("{}", y)
+        })
+        .unwrap_or_else(|_| "2026".to_string());
+
+    let md = format!(
+r#"---
+kind: Package
+id: package:{name}
+name: "{title}"
+version: "1.0"
+purpose: "Cloned website template from {domain}"
+problem_solved: "Provides a reference template of the website at {url} for AI agents to reuse design and architecture patterns."
+install: ""
+dependencies: []
+
+concepts:
+  - name: Website Template
+    id: concept:{name}/template
+    description: "The cloned HTML template from {domain} including original structure and styling."
+  - name: Design Patterns
+    id: concept:{name}/design
+    description: "Visual and layout design patterns extracted from {domain}."
+  - name: Architecture
+    id: concept:{name}/architecture
+    description: "Technical architecture and stack inferred from {domain}."
+
+apis:
+  - name: template/index.html
+    id: api:{name}/html
+    signature: "file: template/index.html ({html_size} bytes)"
+    returns: "HTML document"
+    description: "The main HTML document of the cloned website, preserving original structure."
+
+examples:
+  - id: example:{name}/clone
+    description: "Website cloned from {url} in {today}. The template is available in the template/ directory."
+
+failures:
+  - id: failure:{name}/stale
+    symptom: Website content changes over time as the original is updated.
+    cause: The template is a point-in-time snapshot and does not auto-sync.
+    fix: Re-run atlas clone to refresh the template.
+---
+# {title}
+
+Website template cloned from [{url}]({url}) in {today}.
+"#, name=name, title=title, domain=domain, url=url, html_size=html_size, today=today);
+
+    let md_path = target.join(format!("{}.md", name));
+    std::fs::write(&md_path, &md)?;
+
+    std::fs::write(target.join(".gitignore"), "template/\n")?;
+
+    if json {
+        let output = serde_json::json!({
+            "url": url,
+            "name": name,
+            "path": target.to_string_lossy(),
+            "html_size": html_size,
+            "assets_downloaded": assets,
+        });
+        println!("{}", serde_json::to_string(&output)?);
+    } else {
+        println!("✅ Cloned {} ({})", url, target.display());
+        println!("   template/index.html - main HTML ({} bytes)", html_size);
+        println!("   {}.md - knowledge package metadata", name);
+        println!();
+        println!("Next: atlas compile {}.md --out {}.atlas", target.display(), target.display());
+    }
+    Ok(())
+}
+
+fn run_export(bundle: &Path, style: &str, out: Option<&PathBuf>, tokens: bool, json: bool) -> Result<(), anyhow::Error> {
+    let bundle_data = AtlasBundle::from_file(bundle)?;
+    let ir = bundle_data.ir;
+    let out_path = out.map(|p| p.clone()).unwrap_or_else(|| {
+        let stem = bundle.file_stem().and_then(|s| s.to_str()).unwrap_or("bundle");
+        PathBuf::from(format!("{}-export.{}", stem, if style == "json" { "json" } else if style == "markdown" { "md" } else { "xml" }))
+    });
+
+    let mut output = String::new();
+
+    match style {
+        "xml" => {
+            output.push_str(r#"<?xml version="1.0" encoding="UTF-8"?>
+<atlas-export>
+  <metadata>
+    <nodes>"#);
+            output.push_str(&ir.nodes.len().to_string());
+            output.push_str(r#"</nodes>
+    <edges>"#);
+            output.push_str(&ir.edges.len().to_string());
+            output.push_str(r#"</edges>
+    <decision-trees>"#);
+            output.push_str(&ir.decision_trees.len().to_string());
+            output.push_str(r#"</decision-trees>
+  </metadata>
+  <concepts>
+"#);
+            for node in &ir.nodes {
+                let desc = node.description.as_deref().unwrap_or("");
+                output.push_str(&format!(r#"    <concept id="{}" kind="{}">
+      <name>{}</name>
+      <description>{}</description>
+    </concept>
+"#, node.id, node.kind, node.name, desc));
+            }
+            output.push_str(r#"  </concepts>
+  <edges>
+"#);
+            for edge in &ir.edges {
+                output.push_str(&format!(r#"    <edge source="{}" target="{}" kind="{}" />
+"#, edge.src, edge.dst, edge.edge_type));
+            }
+            output.push_str(r#"  </edges>
+  <decision-trees>
+"#);
+            for tree in &ir.decision_trees {
+                output.push_str(&format!(r#"    <tree id="{}">
+      <nodes>{}</nodes>
+    </tree>
+"#, tree.id, tree.nodes.len()));
+            }
+            output.push_str(r#"  </decision-trees>
+</atlas-export>"#);
+        }
+        "json" => {
+            let export = serde_json::json!({
+                "metadata": {
+                    "nodes": ir.nodes.len(),
+                    "edges": ir.edges.len(),
+                    "decision_trees": ir.decision_trees.len(),
+                },
+                "concepts": ir.nodes.iter().map(|n| serde_json::json!({
+                    "id": n.id,
+                    "kind": n.kind.to_string(),
+                    "name": n.name,
+                    "description": n.description,
+                })).collect::<Vec<_>>(),
+                "edges": ir.edges.iter().map(|e| serde_json::json!({
+                    "source": e.src,
+                    "target": e.dst,
+                    "kind": e.edge_type.to_string(),
+                })).collect::<Vec<_>>(),
+            });
+            output = serde_json::to_string_pretty(&export)?;
+        }
+        _ => {
+            output.push_str(&format!("# Atlas Knowledge Export: {}\n\n", bundle.display()));
+            output.push_str(&format!("- **Nodes:** {}\n", ir.nodes.len()));
+            output.push_str(&format!("- **Edges:** {}\n", ir.edges.len()));
+            output.push_str(&format!("- **Decision Trees:** {}\n\n", ir.decision_trees.len()));
+            output.push_str("## Concepts\n\n");
+            for node in &ir.nodes {
+                let desc = node.description.as_deref().unwrap_or("");
+                output.push_str(&format!("- **{}** (`{}`): {}\n", node.name, node.id, desc));
+            }
+        }
+    }
+
+    std::fs::write(&out_path, &output)?;
+
+    let token_estimate = if tokens { Some(output.len() / 4) } else { None };
+
+    if json {
+        let mut result = serde_json::json!({
+            "export_path": out_path.to_string_lossy(),
+            "format": style,
+            "nodes": ir.nodes.len(),
+            "edges": ir.edges.len(),
+        });
+        if let Some(t) = token_estimate {
+            result["token_estimate"] = serde_json::json!(t);
+        }
+        println!("{}", serde_json::to_string(&result)?);
+    } else {
+        println!("✅ Exported {} nodes, {} edges → {}", ir.nodes.len(), ir.edges.len(), out_path.display());
+        if let Some(t) = token_estimate {
+            println!("   Estimated tokens: ~{}", t);
+        }
+        println!("   Next: feed this file to your AI coding assistant");
+    }
+    Ok(())
+}
+
+fn run_skill_generate(path: &PathBuf, out: Option<&PathBuf>, name: Option<&str>, risk: &str, category: &str, json: bool) -> Result<(), anyhow::Error> {
+    let ext = path.extension().and_then(|s| s.to_str()).unwrap_or("");
+    let (pkg_name, concepts, apis) = if ext == "atlas" {
+        let bundle_data = AtlasBundle::from_file(path)?;
+        let ir = bundle_data.ir;
+        let pkg_name = name.unwrap_or_else(|| path.file_stem().and_then(|s| s.to_str()).unwrap_or("atlas-package")).to_string();
+        let concepts: Vec<String> = ir.nodes.iter().map(|n| format!("- **{}**: {}", n.name, n.description.as_deref().unwrap_or(""))).collect();
+        let apis: Vec<String> = ir.nodes.iter().filter(|n| matches!(n.kind, atlas_ir::NodeKind::API)).map(|n| format!("- `{}`", n.id)).collect();
+        (pkg_name, concepts, apis)
+    } else {
+        let content = std::fs::read_to_string(path)?;
+        let _parts: Vec<&str> = content.splitn(3, "---").collect();
+        let pkg_name = name.unwrap_or_else(|| path.file_stem().and_then(|s| s.to_str()).unwrap_or("atlas-package")).to_string();
+        let concepts = vec!["- See package YAML frontmatter for concepts".to_string()];
+        let apis = vec!["- See package YAML frontmatter for APIs".to_string()];
+        (pkg_name, concepts, apis)
+    };
+
+    let skill_name = pkg_name.replace(['_', '-'], " ").split_whitespace().map(|w| {
+        let mut c = w.chars();
+        match c.next() { Some(f) => f.to_uppercase().collect::<String>() + c.as_str(), None => String::new() }
+    }).collect::<Vec<_>>().join(" ");
+
+    let out_path = out.cloned().unwrap_or_else(|| PathBuf::from("SKILL.md"));
+    let md_content = format!(
+r#"---
+name: {skill_name}
+description: Atlas knowledge package — {pkg_name}
+risk: {risk}
+category: {category}
+---
+
+# {skill_name}
+
+This skill is generated from an Atlas knowledge package.
+
+## Concepts
+
+{concepts}
+
+## APIs
+
+{apis}
+
+## Usage
+
+```shell
+atlas solve bundle.atlas "your question about {pkg_name}"
+atlas decide bundle.atlas "your decision" -c context=value
+```
+"#, skill_name=skill_name, pkg_name=pkg_name, risk=risk, category=category,
+       concepts=concepts.join("\n"), apis=apis.join("\n"));
+
+    std::fs::write(&out_path, &md_content)?;
+
+    if json {
+        println!(r#"{{"skill":"{}","path":"{}","risk":"{}","category":"{}"}}"#, skill_name, out_path.display(), risk, category);
+    } else {
+        println!("✅ Generated skill: {} → {}", skill_name, out_path.display());
+        println!("   Risk: {}, Category: {}", risk, category);
+        println!("   Install with: atlas skill install --dir .agents/skills");
+    }
+    Ok(())
+}
+
+fn run_skill_search(query: &str, limit: usize, json: bool) -> Result<(), anyhow::Error> {
+    let url = format!("https://raw.githubusercontent.com/sickn33/agentic-awesome-skills/main/skills_index.json");
+    let response = ureq::get(&url)
+        .header("User-Agent", "AtlasSkillSearch/1.0")
+        .call()
+        .map_err(|e| anyhow::anyhow!("Failed to fetch skill index: {}", e))?;
+
+    let body = response.into_body().read_to_string()?;
+    let skills: Vec<serde_json::Value> = serde_json::from_str(&body)?;
+
+    let lower_query = query.to_lowercase();
+    let matches: Vec<&serde_json::Value> = skills.iter()
+        .filter(|s| {
+            s["name"].as_str().unwrap_or("").to_lowercase().contains(&lower_query)
+                || s["description"].as_str().unwrap_or("").to_lowercase().contains(&lower_query)
+                || s["category"].as_str().unwrap_or("").to_lowercase().contains(&lower_query)
+                || s["tags"].as_array().map(|t| t.iter().any(|tag| tag.as_str().unwrap_or("").to_lowercase().contains(&lower_query))).unwrap_or(false)
+        })
+        .take(limit)
+        .collect();
+
+    if json {
+        let results: Vec<serde_json::Value> = matches.iter().map(|s| serde_json::json!({
+            "id": s["id"],
+            "name": s["name"],
+            "description": s["description"],
+            "category": s["category"],
+            "risk": s["risk"],
+            "path": s["path"],
+        })).collect();
+        println!("{}", serde_json::to_string(&serde_json::json!({"skills": results, "total": skills.len(), "matches": matches.len()}))?);
+    } else {
+        println!("🔍 Found {} matching skills (out of {} total)", matches.len(), skills.len());
+        for s in &matches {
+            let name = s["name"].as_str().unwrap_or("unknown");
+            let desc = s["description"].as_str().unwrap_or("").chars().take(120).collect::<String>();
+            let cat = s["category"].as_str().unwrap_or("");
+            let risk = s["risk"].as_str().unwrap_or("");
+            println!("  {:<30} [{}] (risk: {})", name, cat, risk);
+            println!("  {}\n", desc);
+        }
+        println!("Install a skill: atlas skill install <skill-id>");
+        println!("Browse all: https://github.com/sickn33/agentic-awesome-skills");
+    }
+    Ok(())
+}
+
+fn run_skill_list(json: bool) -> Result<(), anyhow::Error> {
+    let skills_dir = PathBuf::from(".agents/skills");
+    if !skills_dir.exists() {
+        if json {
+            println!(r#"{{"skills":[],"message":"No .agents/skills directory found"}}"#);
+        } else {
+            println!("No .agents/skills directory found. Install skills first:");
+            println!("  npx agentic-awesome-skills --path .agents/skills");
+            println!("  atlas skill install <skill-id> --dir .agents/skills");
+        }
+        return Ok(());
+    }
+
+    let mut skills = Vec::new();
+    for entry in std::fs::read_dir(&skills_dir)? {
+        let entry = entry?;
+        let path = entry.path();
+        if path.is_dir() {
+            let skill_md = path.join("SKILL.md");
+            if skill_md.exists() {
+                skills.push(entry.file_name().to_string_lossy().to_string());
+            }
+        }
+    }
+    skills.sort();
+
+    if json {
+        println!(r#"{{"skills":{}}}"#, serde_json::to_string(&skills)?);
+    } else {
+        println!("Installed skills ({})", skills.len());
+        for s in &skills {
+            println!("  - {}", s);
+        }
+    }
+    Ok(())
+}
+
+fn run_skill_install(skills: &[String], dir: Option<&PathBuf>, json: bool) -> Result<(), anyhow::Error> {
+    if skills.is_empty() {
+        anyhow::bail!("No skill IDs provided. Usage: atlas skill install <skill-id1> [<skill-id2> ...]");
+    }
+
+    let target_dir = dir.cloned().unwrap_or_else(|| PathBuf::from(".agents/skills"));
+    std::fs::create_dir_all(&target_dir)?;
+
+    // Fetch the skills index
+    let url = "https://raw.githubusercontent.com/sickn33/agentic-awesome-skills/main/skills_index.json";
+    let response = ureq::get(url)
+        .header("User-Agent", "AtlasSkillInstall/1.0")
+        .call()
+        .map_err(|e| anyhow::anyhow!("Failed to fetch skill index: {}", e))?;
+
+    let body = response.into_body().read_to_string()?;
+    let index: Vec<serde_json::Value> = serde_json::from_str(&body)?;
+
+    let mut installed = 0u32;
+    for skill_id in skills {
+        if let Some(skill) = index.iter().find(|s| s["id"].as_str().unwrap_or("") == skill_id) {
+            let path = skill["path"].as_str().unwrap_or("");
+            let skill_name = skill["name"].as_str().unwrap_or(skill_id);
+            if path.is_empty() {
+                if json {
+                    println!(r#"{{"warning":"No path for skill '{}'"}}"#, skill_id);
+                } else {
+                    println!("⚠️  No path for skill '{}'", skill_id);
+                }
+                continue;
+            }
+            let raw_url = format!("https://raw.githubusercontent.com/sickn33/agentic-awesome-skills/main/{}", path.trim_start_matches("./"));
+            match ureq::get(&raw_url)
+                .header("User-Agent", "AtlasSkillInstall/1.0")
+                .call()
+            {
+                Ok(r) => {
+                    let skill_body = r.into_body().read_to_string().unwrap_or_default();
+                    let skill_dir = target_dir.join(skill_id);
+                    std::fs::create_dir_all(&skill_dir)?;
+                    std::fs::write(skill_dir.join("SKILL.md"), &skill_body)?;
+                    installed += 1;
+                    if !json {
+                        println!("  ✅ Installed: {} → {}", skill_name, skill_dir.display());
+                    }
+                }
+                Err(e) => {
+                    if json {
+                        println!(r#"{{"warning":"Failed to download skill '{}': {}"}}"#, skill_id, e);
+                    } else {
+                        println!("  ⚠️  Failed to download '{}': {}", skill_id, e);
+                    }
+                }
+            }
+        } else {
+            if json {
+                println!(r#"{{"warning":"Skill '{}' not found in index"}}"#, skill_id);
+            } else {
+                println!("  ⚠️  Skill '{}' not found in index", skill_id);
+            }
+        }
+    }
+
+    if json {
+        println!(r#"{{"installed":{},"directory":"{}"}}"#, installed, target_dir.display());
+    } else {
+        println!("✅ Installed {} skill(s) to {}", installed, target_dir.display());
     }
     Ok(())
 }

@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>API Reference — Atlas Knowledge OS</title>
+  <meta name="description" content="Full API reference for Atlas CLI, Python SDK, and MCP server." />
+  <link rel="stylesheet" href="/css/style.css" />
+  <style>
+    .doc-content { max-width:760px; margin:0 auto; padding:2rem 1.5rem 4rem; line-height:1.7; }
+    .doc-content h2 { margin-top:2.5rem; font-size:1.35rem; border-bottom:1px solid var(--border,#2d3748); padding-bottom:0.5rem; }
+    .doc-content h3 { margin-top:2rem; font-size:1.1rem; }
+    .doc-content h4 { margin-top:1.5rem; font-size:1rem; color:var(--accent,#38bdf8); }
+    .doc-content p { margin:0.75rem 0; }
+    .doc-content pre { background:var(--terminal-bg,#0d1117); padding:0.75rem 1rem; border-radius:8px; overflow-x:auto; font-size:0.825rem; border:1px solid var(--border,#2d3748); }
+    .doc-content code { background:var(--terminal-bg,#0d1117); padding:0.15rem 0.4rem; border-radius:4px; font-size:0.85rem; }
+    .doc-content pre code { background:transparent; padding:0; }
+    .doc-content .cmd { color:var(--accent,#38bdf8); font-weight:600; }
+    .doc-content .arg { color:#a78bfa; }
+    .doc-content .flag { color:#fbbf24; }
+    .doc-content table { width:100%; border-collapse:collapse; margin:1rem 0; font-size:0.9rem; }
+    .doc-content th, .doc-content td { text-align:left; padding:0.5rem 0.75rem; border-bottom:1px solid var(--border,#2d3748); }
+    .doc-content th { font-weight:600; color:var(--text,#e2e8f0); }
+    .doc-content td { color:var(--text-secondary,#94a3b8); }
+  </style>
+</head>
+<body>
+  <nav class="nav">
+    <div class="nav-inner">
+      <a href="/" class="logo">Atlas</a>
+      <div class="nav-links">
+        <a href="/">Product</a>
+        <a href="https://github.com/varshinicb1/atlas" target="_blank">GitHub</a>
+        <a href="/docs/" class="active">Docs</a>
+      </div>
+    </div>
+  </nav>
+
+  <section class="section" style="padding-top:5rem">
+    <div class="section-inner">
+      <h2>API Reference</h2>
+      <p class="section-sub">CLI commands, Python SDK, and MCP server.</p>
+    </div>
+  </section>
+
+  <div class="doc-content">
+
+    <h2>CLI Commands</h2>
+    <p>All commands accept <code>--json</code> for machine-readable output.</p>
+
+    <h3>atlas compile</h3>
+    <p>Compile knowledge sources into a portable <code>.atlas</code> bundle.</p>
+    <pre><code><span class="cmd">atlas compile</span> [--out &lt;path&gt;] [--json] &lt;source.md&gt; [source.yaml ...]</code></pre>
+    <table>
+      <tr><th>Argument</th><th>Description</th></tr>
+      <tr><td><span class="arg">source.md</span></td><td>Markdown knowledge file (required)</td></tr>
+      <tr><td><span class="arg">source.yaml</span></td><td>Optional decision tree YAML file(s)</td></tr>
+      <tr><td><span class="flag">--out</span></td><td>Output bundle path (default: <code>&lt;name&gt;.atlas</code>)</td></tr>
+      <tr><td><span class="flag">--json</span></td><td>JSON output</td></tr>
+    </table>
+
+    <h3>atlas solve</h3>
+    <p>Search a compiled bundle for knowledge matching a query.</p>
+    <pre><code><span class="cmd">atlas solve</span> [--bundle &lt;path&gt;] [--json] &lt;query&gt;</code></pre>
+    <table>
+      <tr><th>Argument</th><th>Description</th></tr>
+      <tr><td><span class="arg">query</span></td><td>Free-text search query</td></tr>
+      <tr><td><span class="flag">--bundle</span></td><td>Path to <code>.atlas</code> bundle</td></tr>
+      <tr><td><span class="flag">--json</span></td><td>JSON output</td></tr>
+    </table>
+
+    <h3>atlas decide</h3>
+    <p>Walk a decision tree to reach a deterministic recommendation.</p>
+    <pre><code><span class="cmd">atlas decide</span> [--bundle &lt;path&gt;] [--json] &lt;query&gt; [-c &lt;key=val&gt; ...]</code></pre>
+    <table>
+      <tr><th>Argument</th><th>Description</th></tr>
+      <tr><td><span class="arg">query</span></td><td>Query string (matched against tree tags)</td></tr>
+      <tr><td><span class="flag">-c</span></td><td>Context key=value pairs for branch conditions</td></tr>
+      <tr><td><span class="flag">--bundle</span></td><td>Path to <code>.atlas</code> bundle</td></tr>
+      <tr><td><span class="flag">--json</span></td><td>JSON output</td></tr>
+    </table>
+
+    <h3>atlas verify</h3>
+    <p>Verify bundle integrity — all edges reference valid nodes.</p>
+    <pre><code><span class="cmd">atlas verify</span> [--bundle &lt;path&gt;] [--artifact &lt;id&gt;] [--policy &lt;name&gt;] [--json]</code></pre>
+
+    <h3>atlas install</h3>
+    <p>Download and install a package from the registry.</p>
+    <pre><code><span class="cmd">atlas install</span> [-n &lt;org&gt;] [--json] &lt;package.md ...&gt;</code></pre>
+
+    <h3>atlas search</h3>
+    <p>Search the public registry for knowledge packages.</p>
+    <pre><code><span class="cmd">atlas search</span> [--json] &lt;query&gt;</code></pre>
+
+    <h3>atlas publish</h3>
+    <p>Publish a package to the registry.</p>
+    <pre><code><span class="cmd">atlas publish</span> [--json] &lt;path.md&gt;</code></pre>
+
+    <h3>atlas dump</h3>
+    <p>Dump a compiled bundle's contents as JSON.</p>
+    <pre><code><span class="cmd">atlas dump</span> [--json] &lt;bundle&gt;</code></pre>
+
+    <h3>atlas init</h3>
+    <p>Scaffold a new knowledge package.</p>
+    <pre><code><span class="cmd">atlas init</span> [--template &lt;name&gt;] &lt;name&gt;</code></pre>
+
+    <h3>atlas reason</h3>
+    <p>Ask an LLM to reason over a bundle's knowledge (requires Ollama or a compatible model endpoint).</p>
+    <pre><code><span class="cmd">atlas reason</span> [--bundle &lt;path&gt;] [--model &lt;name&gt;] [--json] &lt;query&gt;</code></pre>
+
+    <h2>Python SDK</h2>
+
+    <h3>Core Functions</h3>
+    <table>
+      <tr><th>Function</th><th>Description</th></tr>
+      <tr><td><code>solve(bundle, query, timeout=None) -> SolveResult</code></td><td>Search knowledge bundle</td></tr>
+      <tr><td><code>decide(bundle, query, context=None, timeout=None) -> DecideResult | None</code></td><td>Walk decision tree</td></tr>
+      <tr><td><code>verify(bundle, artifact=None, timeout=None) -> VerificationReport</code></td><td>Verify bundle integrity</td></tr>
+      <tr><td><code>compile(sources, out=None, timeout=None) -> dict</code></td><td>Compile knowledge sources</td></tr>
+      <tr><td><code>install(sources, name=None, timeout=None) -> list[dict]</code></td><td>Install packages from registry</td></tr>
+      <tr><td><code>load(source, timeout=None) -> dict</code></td><td>Compile and load in one step</td></tr>
+      <tr><td><code>reason(bundle, query, model=None, timeout=None) -> str</code></td><td>LLM-based reasoning</td></tr>
+    </table>
+
+    <h3>Dataclasses</h3>
+    <table>
+      <tr><th>Class</th><th>Fields</th></tr>
+      <tr><td><code>SolveResult</code></td><td><code>query, bundle, confidence, total_matches, nodes: list[Node]</code></td></tr>
+      <tr><td><code>DecideResult</code></td><td><code>tree_id, path, rationale, recommendations: list[Recommendation], agent_instructions</code></td></tr>
+      <tr><td><code>Node</code></td><td><code>id, name, kind, description, version, confidence</code></td></tr>
+      <tr><td><code>Recommendation</code></td><td><code>node_id, confidence</code></td></tr>
+      <tr><td><code>VerificationReport</code></td><td><code>passed, checks: list[VerificationCheck]</code></td></tr>
+      <tr><td><code>VerificationCheck</code></td><td><code>name, passed, message, severity</code></td></tr>
+    </table>
+
+    <h3>Agent Class</h3>
+    <p>The <code>Agent</code> class wraps the full registry-to-query pipeline:</p>
+    <pre><code>from atlas_sdk import Agent
+
+# From registry packages
+agent = Agent("my-agent", packages=["flutter_core", "riverpod"])
+
+# Or from local sources
+agent = Agent("local", sources=["my_package.md", "decisions.yaml"])
+
+# Discover packages by keyword
+packages = agent.discover("form validation", limit=5)
+
+# Solve
+result = agent.solve("How do I validate a form?")
+
+# Decide
+decision = agent.decide("build web app", context={"type": "saas"})
+
+# Verify
+report = agent.verify("validate input")</code></pre>
+
+    <h2>MCP Server</h2>
+    <p>Atlas provides a Model Context Protocol server for AI coding assistants.</p>
+    <pre><code># Start the MCP server
+npx atlas-mcp-server
+
+# Available tools:
+# - atlas_solve: Search knowledge bundles
+# - atlas_decide: Walk decision trees
+# - atlass_verify: Verify bundle integrity
+# - atlas_compile: Compile knowledge sources
+# - atlas_search: Search the registry
+
+# Resource template:
+# - atlas://{bundle}: Browse a compiled bundle</code></pre>
+
+    <h2>GitHub Actions</h2>
+    <p>Two composite actions are available:</p>
+    <table>
+      <tr><th>Action</th><th>Description</th></tr>
+      <tr><td><code>.github/actions/atlas-compile/</code></td><td>Compile all <code>.md</code> packages in a repository</td></tr>
+      <tr><td><code>.github/actions/atlas-verify/</code></td><td>Verify all compiled <code>.atlas</code> bundles</td></tr>
+    </table>
+
+  </div>
+
+  <footer class="footer">
+    <div class="footer-inner">
+      <div class="footer-col">
+        <div class="footer-logo">Atlas</div>
+        <p>The Knowledge Operating System for AI agents.</p>
+      </div>
+      <div class="footer-col">
+        <h4>Docs</h4>
+        <a href="/docs/quickstart.html">Quickstart</a>
+        <a href="/docs/api.html">API Reference</a>
+      </div>
+      <div class="footer-col">
+        <h4>Community</h4>
+        <a href="https://github.com/varshinicb1/atlas">GitHub</a>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <p>&copy; 2026 Atlas Knowledge. Apache 2.0 License.</p>
+    </div>
+  </footer>
+</body>
+</html>

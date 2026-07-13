@@ -1,0 +1,49 @@
+id: tech_stack_decision
+trigger:
+  intent: choose_tech_stack
+  domain: web
+  tags: [stack, architecture, saas, mobile, api, content]
+root: start
+nodes:
+  - id: start
+    question: "What kind of application are you building?"
+    node_type: categorical
+    branches:
+      - condition: "type=saas"
+        next: saas_stack
+      - condition: "type=content"
+        next: content_stack
+      - condition: "type=api"
+        next: api_stack
+      - condition: "type=mobile"
+        next: mobile_stack
+  - id: saas_stack
+    terminal:
+      recommendation:
+        - node_id: "concept:tech-stack/framework-decision"
+          confidence: 0.9
+        - node_id: "concept:tech-stack/database-decision"
+          confidence: 0.85
+      rationale: "SaaS apps need SSR + a typed API + relational data. Next.js (SSR) with a Hono/TRPC API and Postgres via Prisma gives the fastest path from idea to production."
+      agent_instructions: "Scaffold Next.js, add Hono API routes, wire Prisma + Postgres, add Zod validation at every boundary."
+  - id: content_stack
+    terminal:
+      recommendation:
+        - node_id: "concept:tech-stack/framework-decision"
+          confidence: 0.85
+      rationale: "Content-dominated sites win with static generation. Astro or Next.js static export minimizes TTFB and hosting cost."
+      agent_instructions: "Use Astro for content-heavy sites; deploy to Cloudflare Pages."
+  - id: api_stack
+    terminal:
+      recommendation:
+        - node_id: "concept:tech-stack/database-decision"
+          confidence: 0.9
+      rationale: "API services need a typed, validated backend. Hono + Zod + Postgres (or D1 at the edge) is lean and fast."
+      agent_instructions: "Build a Hono service, validate every request with Zod, persist with Prisma/Postgres or D1."
+  - id: mobile_stack
+    terminal:
+      recommendation:
+        - node_id: "concept:tech-stack/framework-decision"
+          confidence: 0.85
+      rationale: "Mobile apps: React Native for TypeScript teams, Flutter for Dart teams. Both ship to iOS + Android from one codebase."
+      agent_instructions: "Use React Native when the web stack is already React/TypeScript; Flutter otherwise."

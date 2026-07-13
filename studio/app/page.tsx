@@ -1,34 +1,59 @@
 "use client";
 
-import { Suspense, useCallback, useEffect, useState } from "react";
+import { Suspense, useCallback, useState, useMemo, useEffect } from "react";
 import { useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
-import { AtlasNode, AtlasEdge, loadBundle, getNodeColor } from "./lib/api";
+import { AtlasNode, AtlasEdge, loadBundle, loadRegistryPackage, listRegistryPackages, RegistryPackageInfo, getNodeColor } from "./lib/api";
 
 const GraphView = dynamic(() => import("./components/GraphView"), { ssr: false });
 
 const DEFAULT_BUNDLE = "../bundle.atlas";
 
+type Tab = "local" | "registry";
+
 function HomeContent() {
+  const [tab, setTab] = useState<Tab>("local");
   const [nodes, setNodes] = useState<AtlasNode[]>([]);
   const [edges, setEdges] = useState<AtlasEdge[]>([]);
   const [selected, setSelected] = useState<AtlasNode | null>(null);
-  const [error, setError] = useState<string>("");
+  const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [loaded, setLoaded] = useState(false);
+  const [bundleName, setBundleName] = useState("");
   const [search, setSearch] = useState("");
   const searchParams = useSearchParams();
   const [bundlePath, setBundlePath] = useState(
     () => searchParams.get("bundle") || DEFAULT_BUNDLE
   );
+  const [registryPackages, setRegistryPackages] = useState<RegistryPackageInfo[]>([]);
+  const [registryLoading, setRegistryLoading] = useState(false);
+  const [registrySearch, setRegistrySearch] = useState("");
 
-  const doLoad = useCallback(async (path: string) => {
+  useEffect(() => {
+    let cancelled = false;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setRegistryLoading(true);
+    listRegistryPackages()
+      .then((pkgs) => {
+        if (!cancelled) {
+          setRegistryPackages(pkgs);
+          setRegistryLoading(false);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setRegistryLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, []);
+
+  async function doLoad(path: string) {
     setError("");
     setLoading(true);
     try {
       const ir = await loadBundle(path);
       setNodes(ir.nodes);
       setEdges(ir.edges);
+      setBundleName(path.split("/").pop() || path);
       setSelected(null);
       setLoaded(true);
     } catch (err: unknown) {
@@ -40,161 +65,195 @@ function HomeContent() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }
 
-  useEffect(() => {
-    const path = searchParams.get("bundle") || DEFAULT_BUNDLE;
-    // Data fetch on mount / when the ?bundle= param changes. The state
-    // updates happen asynchronously inside loadBundle, not synchronously here.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    doLoad(path);
-  }, [searchParams, doLoad]);
+  async function doLoadRegistry(name: string) {
+    setError("");
+    setLoading(true);
+    try {
+      const ir = await loadRegistryPackage(name);
+      setNodes(ir.nodes);
+      setEdges(ir.edges);
+      setBundleName(name);
+      setSelected(null);
+      setLoaded(true);
+    } catch (err: unknown) {
+      setNodes([]);
+      setEdges([]);
+      setSelected(null);
+      setLoaded(false);
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setLoading(false);
+    }
+  }
 
   const handleLoad = useCallback(() => {
     if (bundlePath) {
       window.history.replaceState({}, "", `?bundle=${encodeURIComponent(bundlePath)}`);
       doLoad(bundlePath);
     }
-  }, [bundlePath, doLoad]);
+  }, [bundlePath]);
 
-  const selectedEdges = selected
-    ? edges.filter((e) => e.src === selected.id || e.dst === selected.id)
-    : [];
+  const selectedEdges = useMemo(
+    () => (selected ? edges.filter((e) => e.src === selected.id || e.dst === selected.id) : []),
+    [selected, edges]
+  );
 
-  const filteredNodes = search
-    ? nodes.filter(
-        (n) =>
-          n.name.toLowerCase().includes(search.toLowerCase()) ||
-          n.id.toLowerCase().includes(search.toLowerCase())
-      )
-    : nodes;
+  const filteredNodes = useMemo(() => {
+    if (!search) return nodes;
+    const q = search.toLowerCase();
+    return nodes.filter((n) => n.name.toLowerCase().includes(q) || n.id.toLowerCase().includes(q));
+  }, [nodes, search]);
 
-  const filteredEdges = search
-    ? edges.filter(
-        (e) =>
-          filteredNodes.some((n) => n.id === e.src) &&
-          filteredNodes.some((n) => n.id === e.dst)
-      )
-    : edges;
+  const filteredEdges = useMemo(() => {
+    if (!search) return edges;
+    const ids = new Set(filteredNodes.map((n) => n.id));
+    return edges.filter((e) => ids.has(e.src) && ids.has(e.dst));
+  }, [edges, search, filteredNodes]);
+
+  const filteredRegistryPackages = useMemo(() => {
+    if (!registrySearch) return registryPackages;
+    const q = registrySearch.toLowerCase();
+    return registryPackages.filter(
+      (p) =>
+        p.name.toLowerCase().includes(q) ||
+        (p.description || "").toLowerCase().includes(q)
+    );
+  }, [registryPackages, registrySearch]);
 
   const hasGraph = loaded && nodes.length > 0;
 
   return (
-    <div style={{ display: "flex", height: "100vh", fontFamily: "system-ui, sans-serif" }}>
-      <div
-        style={{
-          width: 300,
-          borderRight: "1px solid #e2e8f0",
-          display: "flex",
-          flexDirection: "column",
-          background: "#f8fafc",
-        }}
-      >
-        <div style={{ padding: 16, borderBottom: "1px solid #e2e8f0" }}>
-          <h2 style={{ margin: 0, fontSize: 18, fontWeight: 600 }}>Atlas Studio</h2>
+    <div className="studio-layout">
+      <aside className="sidebar">
+        <div className="sidebar-header">
+          <h2 className="sidebar-title">Atlas Studio</h2>
         </div>
 
-        <div style={{ padding: 12, borderBottom: "1px solid #e2e8f0" }}>
-          <input
-            type="text"
-            value={bundlePath}
-            onChange={(e) => setBundlePath(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") handleLoad();
-            }}
-            placeholder="Path to .atlas file"
-            style={{
-              width: "100%",
-              padding: "6px 10px",
-              fontSize: 13,
-              border: "1px solid #cbd5e1",
-              borderRadius: 6,
-              boxSizing: "border-box",
-              marginBottom: 8,
-            }}
-          />
+        <div className="sidebar-tabs">
           <button
-            onClick={handleLoad}
-            disabled={loading || !bundlePath}
-            style={{
-              width: "100%",
-              padding: "6px 12px",
-              fontSize: 13,
-              background: loading || !bundlePath ? "#a5b4fc" : "#6366f1",
-              color: "white",
-              border: "none",
-              borderRadius: 6,
-              cursor: loading || !bundlePath ? "default" : "pointer",
-            }}
+            className={`sidebar-tab ${tab === "local" ? "active" : ""}`}
+            onClick={() => setTab("local")}
           >
-            {loading ? "Loading…" : "Load"}
+            Local
           </button>
-          {error && (
-            <div style={{ marginTop: 8, fontSize: 12, color: "#ef4444" }}>
-              {error.includes("ENOENT") || error.includes("not found")
-                ? "Bundle not found. Try: ../bundle.atlas or enter a valid path."
-                : error}
+          <button
+            className={`sidebar-tab ${tab === "registry" ? "active" : ""}`}
+            onClick={() => setTab("registry")}
+          >
+            Registry
+          </button>
+        </div>
+
+        {tab === "local" ? (
+          <div className="sidebar-section">
+            <input
+              type="text"
+              value={bundlePath}
+              onChange={(e) => setBundlePath(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") handleLoad(); }}
+              placeholder="Path to .atlas file"
+              className="sidebar-input"
+            />
+            <button
+              onClick={handleLoad}
+              disabled={loading || !bundlePath}
+              className="sidebar-btn"
+            >
+              {loading ? "Loading\u2026" : "Load"}
+            </button>
+          </div>
+        ) : (
+          <div className="sidebar-section">
+            <input
+              type="text"
+              value={registrySearch}
+              onChange={(e) => setRegistrySearch(e.target.value)}
+              placeholder="Search registry..."
+              className="sidebar-input"
+            />
+            <div className="registry-list">
+              {registryLoading ? (
+                <div className="sidebar-muted">Loading packages\u2026</div>
+              ) : filteredRegistryPackages.length === 0 ? (
+                <div className="sidebar-muted">
+                  {registrySearch ? "No packages match your search." : "No packages found."}
+                </div>
+              ) : (
+                filteredRegistryPackages.slice(0, 100).map((pkg) => (
+                  <button
+                    key={pkg.name}
+                    className="registry-item"
+                    onClick={() => doLoadRegistry(pkg.name)}
+                    disabled={loading}
+                  >
+                    <div className="registry-item-name">{pkg.name}</div>
+                    <div className="registry-item-meta">
+                      {pkg.version}
+                      {pkg.description
+                        ? ` \u00B7 ${pkg.description.slice(0, 60)}${pkg.description.length > 60 ? "\u2026" : ""}`
+                        : ""}
+                    </div>
+                  </button>
+                ))
+              )}
             </div>
-          )}
-        </div>
+          </div>
+        )}
 
-        <div style={{ padding: 12, borderBottom: "1px solid #e2e8f0" }}>
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search nodes..."
-            disabled={!hasGraph}
-            style={{
-              width: "100%",
-              padding: "6px 10px",
-              fontSize: 13,
-              border: "1px solid #cbd5e1",
-              borderRadius: 6,
-              boxSizing: "border-box",
-            }}
-          />
-        </div>
+        {error && (
+          <div className="sidebar-error">
+            {error.includes("ENOENT") || error.includes("not found")
+              ? "Bundle not found. Try: ../bundle.atlas or pick a registry package."
+              : error}
+          </div>
+        )}
 
-        <div style={{ flex: 1, overflow: "auto", padding: 8 }}>
-          <div style={{ fontSize: 12, color: "#64748b", padding: "4px 8px", marginBottom: 4 }}>
+        {loaded && (
+          <div className="sidebar-search-section">
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Filter nodes..."
+              className="sidebar-input"
+            />
+          </div>
+        )}
+
+        <div className="sidebar-node-list">
+          <div className="sidebar-node-count">
             {filteredNodes.length} nodes, {filteredEdges.length} edges
+            {bundleName ? ` \u00B7 ${bundleName}` : ""}
           </div>
           {filteredNodes.map((n) => (
             <div
               key={n.id}
               onClick={() => setSelected(n)}
-              style={{
-                padding: "6px 10px",
-                cursor: "pointer",
-                borderRadius: 6,
-                fontSize: 13,
-                marginBottom: 2,
-                background: selected?.id === n.id ? "#eef2ff" : "transparent",
-                borderLeft: `3px solid ${getNodeColor(n.kind)}`,
-              }}
+              className={`sidebar-node-item ${selected?.id === n.id ? "selected" : ""}`}
             >
-              <div style={{ fontWeight: 500 }}>{n.name}</div>
-              <div style={{ fontSize: 11, color: "#64748b" }}>{n.kind}</div>
+              <div className="sidebar-node-kind" style={{ borderLeftColor: getNodeColor(n.kind) }}>
+                <div className="sidebar-node-name">{n.name}</div>
+                <div className="sidebar-node-type">{n.kind}</div>
+              </div>
             </div>
           ))}
           {hasGraph && search && filteredNodes.length === 0 && (
-            <div style={{ padding: "8px 10px", fontSize: 12, color: "#94a3b8" }}>
+            <div className="sidebar-muted" style={{ padding: "8px 10px" }}>
               No nodes match &ldquo;{search}&rdquo;.
             </div>
           )}
         </div>
-      </div>
+      </aside>
 
-      <div style={{ flex: 1, position: "relative" }}>
+      <main className="graph-area">
         {loading ? (
-          <CenteredMessage>Loading bundle…</CenteredMessage>
+          <CenteredMessage>Loading bundle\u2026</CenteredMessage>
         ) : error ? (
           <CenteredMessage tone="error">
             Failed to load bundle.
-            <div style={{ fontSize: 12, marginTop: 6, color: "#94a3b8", maxWidth: 420 }}>
-              {error}
-            </div>
+            <div className="centered-sub">{error}</div>
           </CenteredMessage>
         ) : hasGraph ? (
           <GraphView
@@ -205,62 +264,43 @@ function HomeContent() {
         ) : (
           <CenteredMessage>
             No knowledge loaded.
-            <div style={{ fontSize: 12, marginTop: 6, color: "#94a3b8" }}>
-              Enter a path to a compiled <code>.atlas</code> bundle and press Load.
+            <div className="centered-sub">
+              {tab === "local"
+                ? "Enter a path to a compiled .atlas bundle and press Load."
+                : "Select a package from the registry above."}
             </div>
           </CenteredMessage>
         )}
-      </div>
+      </main>
 
       {selected && (
-        <div
-          style={{
-            width: 320,
-            borderLeft: "1px solid #e2e8f0",
-            background: "#f8fafc",
-            padding: 16,
-            overflow: "auto",
-          }}
-        >
-          <div
-            style={{
-              display: "inline-block",
-              padding: "2px 8px",
-              borderRadius: 4,
-              fontSize: 11,
-              fontWeight: 600,
-              background: getNodeColor(selected.kind),
-              color: "white",
-              marginBottom: 8,
-            }}
-          >
+        <aside className="detail-panel">
+          <div className="detail-kind-badge" style={{ background: getNodeColor(selected.kind) }}>
             {selected.kind}
           </div>
-          <h3 style={{ margin: "0 0 4px", fontSize: 16 }}>{selected.name}</h3>
-          <div style={{ fontSize: 12, color: "#64748b", marginBottom: 12 }}>{selected.id}</div>
+          <h3 className="detail-name">{selected.name}</h3>
+          <div className="detail-id">{selected.id}</div>
           {selected.version && (
-            <div style={{ fontSize: 13, marginBottom: 8 }}>
+            <div className="detail-row">
               Version: <strong>{selected.version}</strong>
             </div>
           )}
           {selected.description && (
-            <div style={{ fontSize: 13, marginBottom: 12, lineHeight: 1.5 }}>
+            <div className="detail-desc">
               {selected.description.slice(0, 300)}
-              {selected.description.length > 300 ? "..." : ""}
+              {selected.description.length > 300 ? "\u2026" : ""}
             </div>
           )}
           {selectedEdges.length > 0 && (
-            <div>
-              <div style={{ fontSize: 12, fontWeight: 600, color: "#64748b", marginBottom: 6, textTransform: "uppercase" }}>
-                Connections
-              </div>
+            <div className="detail-connections">
+              <div className="detail-connections-title">Connections</div>
               {selectedEdges.map((e, i) => {
                 const isSrc = e.src === selected.id;
                 const other = nodes.find((n) => n.id === (isSrc ? e.dst : e.src));
                 return (
-                  <div key={i} style={{ fontSize: 12, padding: "4px 0", borderBottom: "1px solid #e2e8f0" }}>
-                    <span style={{ color: "#64748b" }}>
-                      {isSrc ? "→" : "←"} {e.edge_type}
+                  <div key={i} className="detail-connection-row">
+                    <span className="detail-connection-dir">
+                      {isSrc ? "\u2192" : "\u2190"} {e.edge_type}
                     </span>{" "}
                     {other ? other.name : isSrc ? e.dst : e.src}
                   </div>
@@ -268,34 +308,15 @@ function HomeContent() {
               })}
             </div>
           )}
-        </div>
+        </aside>
       )}
     </div>
   );
 }
 
-function CenteredMessage({
-  children,
-  tone,
-}: {
-  children: React.ReactNode;
-  tone?: "error";
-}) {
+function CenteredMessage({ children, tone }: { children: React.ReactNode; tone?: "error" }) {
   return (
-    <div
-      style={{
-        position: "absolute",
-        inset: 0,
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        justifyContent: "center",
-        textAlign: "center",
-        color: tone === "error" ? "#ef4444" : "#64748b",
-        fontSize: 14,
-        padding: 24,
-      }}
-    >
+    <div className={`centered-message ${tone === "error" ? "error" : ""}`}>
       {children}
     </div>
   );

@@ -33,6 +33,29 @@ export async function loadBundle(bundlePath: string): Promise<AtlasIR> {
   return res.json();
 }
 
+export async function loadRegistryPackage(name: string): Promise<AtlasIR> {
+  const res = await fetch(`/api/load-registry?name=${encodeURIComponent(name)}`);
+  if (!res.ok) {
+    const err = await res.json();
+    throw new Error(err.error || "Failed to load package from registry");
+  }
+  return res.json();
+}
+
+export interface RegistryPackageInfo {
+  name: string;
+  version: string;
+  description?: string;
+  tags?: string[];
+}
+
+export async function listRegistryPackages(): Promise<RegistryPackageInfo[]> {
+  const res = await fetch("/api/packages");
+  if (!res.ok) return [];
+  const data = await res.json();
+  return data.packages || data.result || data || [];
+}
+
 export const KIND_COLORS: Record<string, string> = {
   Package: "#6366f1",
   Concept: "#8b5cf6",

@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Quickstart — Atlas Knowledge OS</title>
+  <meta name="description" content="Get started with Atlas in 90 seconds." />
+  <link rel="stylesheet" href="/css/style.css" />
+  <style>
+    .doc-content { max-width:720px; margin:0 auto; padding:2rem 1.5rem 4rem; line-height:1.7; }
+    .doc-content h2 { margin-top:2.5rem; font-size:1.5rem; }
+    .doc-content h3 { margin-top:2rem; font-size:1.15rem; }
+    .doc-content p { margin:1rem 0; color:var(--text-secondary, #94a3b8); }
+    .doc-content pre { background:var(--terminal-bg, #0d1117); padding:1rem; border-radius:8px; overflow-x:auto; font-size:0.875rem; border:1px solid var(--border, #2d3748); }
+    .doc-content code { background:var(--terminal-bg, #0d1117); padding:0.15rem 0.4rem; border-radius:4px; font-size:0.875rem; }
+    .doc-content pre code { background:transparent; padding:0; }
+    .doc-content .prompt { color:var(--accent, #38bdf8); }
+  </style>
+</head>
+<body>
+  <nav class="nav">
+    <div class="nav-inner">
+      <a href="/" class="logo">Atlas</a>
+      <div class="nav-links">
+        <a href="/">Product</a>
+        <a href="https://github.com/varshinicb1/atlas" target="_blank">GitHub</a>
+        <a href="/docs/" class="active">Docs</a>
+      </div>
+    </div>
+  </nav>
+
+  <section class="section" style="padding-top:5rem">
+    <div class="section-inner">
+      <h2>Quickstart</h2>
+      <p class="section-sub">Get Atlas running in 90 seconds.</p>
+    </div>
+  </section>
+
+  <div class="doc-content">
+    <h2>Install the CLI</h2>
+    <pre><code><span class="prompt">$</span> cargo install atlas-cli</code></pre>
+    <p>Or download a pre-built binary from the <a href="https://github.com/varshinicb1/atlas/releases">GitHub releases page</a>.</p>
+
+    <h3>Install the Python SDK</h3>
+    <pre><code><span class="prompt">$</span> pip install atlas-sdk</code></pre>
+
+    <h2>Write Knowledge</h2>
+    <p>Create a markdown file with a YAML frontmatter block that defines a knowledge package:</p>
+    <pre><code>---
+kind: Package
+id: package:my_package
+name: My Package
+version: 0.1.0
+---
+
+# My Knowledge
+
+A **Concept** describes a thing or idea.
+
+Node: concept:my_idea
+- Name: My Idea
+- Description: This is an idea worth knowing.
+
+An **API** describes a function or method signature.
+
+Node: api:do_thing
+- Name: do_thing()
+- Signature: do_thing(arg1: string): Result
+- Description: Does the thing you need.</code></pre>
+
+    <h2>Compile</h2>
+    <p>Compile your knowledge package into a portable <code>.atlas</code> binary:</p>
+    <pre><code><span class="prompt">$</span> atlas compile my_package.md --out my_package.atlas</code></pre>
+
+    <h2>Solve (Conceptual Search)</h2>
+    <pre><code><span class="prompt">$</span> atlas solve --bundle my_package.atlas "my idea"
+<span class="prompt">$</span> python -c "
+import atlas_sdk as atlas
+result = atlas.solve('my_package.atlas', 'my idea')
+for node in result.nodes:
+    print(node.name, node.kind)
+"</code></pre>
+
+    <h2>Decide (Decision Trees)</h2>
+    <p>Add a decision tree to your package via frontmatter:</p>
+    <pre><code>---
+kind: Package
+id: package:my_package
+decision_tree:
+  id: tree:hello
+  trigger: { tags: [hello] }
+  root: start
+  nodes:
+    - id: start
+      question: "Say hello?"
+      branches:
+        - condition: "yes=true"
+          next: greet
+    - id: greet
+      terminal:
+        recommendation:
+          - node_id: concept:my_idea
+            confidence: 1.0
+        rationale: "Greet the user."
+---
+</code></pre>
+    <pre><code><span class="prompt">$</span> atlas decide --bundle my_package.atlas "hello" -c "yes=true"</code></pre>
+
+    <h2>Verify</h2>
+    <p>Every bundle is verifiable. Ensure all edges reference valid nodes:</p>
+    <pre><code><span class="prompt">$</span> atlas verify --bundle my_package.atlas</code></pre>
+
+    <h2>Use the Registry</h2>
+    <p>Search, fetch, and compile packages from the public registry:</p>
+    <pre><code><span class="prompt">$</span> atlas search flutter
+<span class="prompt">$</span> atlas install flutter_core.md
+<span class="prompt">$</span> python -c "
+from atlas_sdk import Agent
+agent = Agent('my-agent', packages=['flutter_core'])
+result = agent.solve('stateless widget')
+print(result.nodes[0].name)
+"</code></pre>
+
+    <h2>Next Steps</h2>
+    <p>Read the <a href="/docs/api.html">API Reference</a> for all CLI commands and Python SDK functions.</p>
+  </div>
+
+  <footer class="footer">
+    <div class="footer-inner">
+      <div class="footer-col">
+        <div class="footer-logo">Atlas</div>
+        <p>The Knowledge Operating System for AI agents.</p>
+      </div>
+      <div class="footer-col">
+        <h4>Docs</h4>
+        <a href="/docs/quickstart.html">Quickstart</a>
+        <a href="/docs/api.html">API Reference</a>
+      </div>
+      <div class="footer-col">
+        <h4>Community</h4>
+        <a href="https://github.com/varshinicb1/atlas">GitHub</a>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <p>&copy; 2026 Atlas Knowledge. Apache 2.0 License.</p>
+    </div>
+  </footer>
+</body>
+</html>

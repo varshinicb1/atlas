@@ -39,3 +39,6 @@ wrangler.toml.bak
 __pycache__/
 *.pyc
 *.egg-info/
+python/build/
+python/dist/
+*.whl

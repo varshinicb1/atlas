@@ -21,3 +21,4 @@ ollama = ["dep:ureq"]
 version = "3"
 optional = true
 default-features = false
+features = ["json"]

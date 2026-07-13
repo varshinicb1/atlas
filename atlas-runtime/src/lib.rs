@@ -118,11 +118,12 @@ impl Runtime {
             0.0
         };
 
+        let total_matches = direct.len();
         Ok(SolveResult {
             query: query.to_string(),
             bundle: bundle_name.to_string(),
             nodes,
-            total_matches: direct.len(),
+            total_matches,
             confidence,
         })
     }

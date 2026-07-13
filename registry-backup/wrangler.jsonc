@@ -15,8 +15,14 @@
   "kv_namespaces": [
     {
       "binding": "CONFIG",
-      "id": "config",
-      "preview_id": "config-preview"
+      "id": "813a1e2d7fd24b6db447eeb7a8919d25",
+      "preview_id": "813a1e2d7fd24b6db447eeb7a8919d25"
+    }
+  ],
+  "services": [
+    {
+      "binding": "REGISTRY",
+      "service": "atlas-hub-registry"
     }
   ]
 }

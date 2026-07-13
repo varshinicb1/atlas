@@ -182,18 +182,18 @@ describe("QA-4: AuthN/AuthZ parity & role enforcement", () => {
 });
 
 describe("QA-5: Input validation", () => {
-  it("REG-12: overly long package name accepted (no length limit)", async () => {
+  it("REG-12: overly long package name rejected (128-char cap)", async () => {
     const { env } = makeEnv();
     const longName = "a".repeat(5000);
     const r = await publish(env, "admin-acme", { ...BASE, name: longName, version: "1.0.0" });
-    expect(r.status).toBe(201); // BUG: unbounded name length (storage/abuse) — P2, not fixed
+    expect(r.status).toBe(400); // FIXED: name length capped (storage/abuse guard)
   });
 
-  it("REG-13: multi-MB file content accepted (no payload size limit)", async () => {
+  it("REG-13: multi-MB file content rejected (2 MB per-file / 10 MB total cap)", async () => {
     const { env } = makeEnv();
     const big = "x".repeat(8 * 1024 * 1024); // 8 MB
     const r = await publish(env, "admin-acme", { ...BASE, name: "big", version: "1.0.0", files: { "big.bin": big } });
-    expect(r.status).toBe(201); // BUG: unbounded file size (DOS vector) — P2, not fixed
+    expect(r.status).toBe(400); // FIXED: file size capped (DOS guard)
   });
 
   it("REG-14: invalid package name returns clean 400 (FIXED)", async () => {

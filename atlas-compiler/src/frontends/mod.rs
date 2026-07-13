@@ -1,7 +1,7 @@
 pub mod decision;
 
 use atlas_ir::{
-    Edge, EdgeType, Example, FailureMode, Node, NodeKind, NodeStatus, SourceRef, Workflow, WorkflowStep,
+    DecisionTree, Edge, EdgeType, Example, FailureMode, Node, NodeKind, NodeStatus, SourceRef, Workflow, WorkflowStep,
 };
 use serde::Deserialize;
 use std::path::Path;
@@ -56,6 +56,8 @@ struct Frontmatter {
     returns: Option<String>,
     #[serde(default)]
     since: Option<String>,
+    #[serde(default)]
+    decision_tree: Option<serde_yaml::Value>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -121,6 +123,7 @@ pub struct MdDocument {
     examples: Vec<Example>,
     failures: Vec<FailureMode>,
     workflows: Vec<Workflow>,
+    decision_trees: Vec<DecisionTree>,
 }
 
 impl MdDocument {
@@ -402,18 +405,30 @@ impl MdDocument {
 
         nodes.insert(0, main_node);
 
+        let decision_trees = if let Some(ref dt_value) = fm.decision_tree {
+            let yaml_str = serde_yaml::to_string(dt_value)?;
+            crate::frontends::decision::DecisionParser::parse_multi(&yaml_str)?
+        } else {
+            Vec::new()
+        };
+
         Ok(Self {
             nodes,
             edges,
             examples,
             failures,
             workflows,
+            decision_trees,
         })
     }
 
     #[allow(clippy::type_complexity)]
     pub fn into_parts(self) -> (Vec<Node>, Vec<Edge>, Vec<Example>, Vec<FailureMode>, Vec<Workflow>) {
         (self.nodes, self.edges, self.examples, self.failures, self.workflows)
+    }
+
+    pub fn decision_trees(&self) -> &[DecisionTree] {
+        &self.decision_trees
     }
 }
 

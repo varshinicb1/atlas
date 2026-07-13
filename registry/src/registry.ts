@@ -38,6 +38,10 @@ interface PublishInput {
   files: Record<string, string>;
   nodes?: number;
   edges?: number;
+  // Explicit org for the package. When omitted, defaults to the publisher's
+  // auth org. Pass an empty string / null to publish a PUBLIC package that
+  // anyone can download anonymously (the curated Atlas library is public).
+  org?: string | null;
 }
 
 interface AuditEntry {
@@ -296,6 +300,9 @@ export class RegistryAgent extends DurableObject<Env> {
     if (!data.name || !data.name.match(/^[a-z0-9_-]+$/)) {
       throw new ValidationError("Package name must be lowercase alphanumeric with underscores/hyphens.");
     }
+    if (data.name.length > 128) {
+      throw new ValidationError("Package name must be 128 characters or fewer.");
+    }
     if (!data.version) {
       throw new ValidationError("Version is required.");
     }
@@ -304,6 +311,22 @@ export class RegistryAgent extends DurableObject<Env> {
     }
     if (!data.files || Object.keys(data.files).length === 0) {
       throw new ValidationError("At least one file is required.");
+    }
+    const MAX_FILE_BYTES = 2 * 1024 * 1024; // 2 MB per file — guards against DOS via oversized payloads
+    const MAX_TOTAL_BYTES = 10 * 1024 * 1024; // 10 MB total payload per publish
+    let totalBytes = 0;
+    for (const [k, v] of Object.entries(data.files)) {
+      if (typeof v !== "string") {
+        throw new ValidationError(`File "${k}" value must be a string.`);
+      }
+      const bytes = new TextEncoder().encode(v).length;
+      if (bytes > MAX_FILE_BYTES) {
+        throw new ValidationError(`File "${k}" exceeds the ${MAX_FILE_BYTES / (1024 * 1024)} MB size limit.`);
+      }
+      totalBytes += bytes;
+    }
+    if (totalBytes > MAX_TOTAL_BYTES) {
+      throw new ValidationError(`Total payload size exceeds the ${MAX_TOTAL_BYTES / (1024 * 1024)} MB limit.`);
     }
     if (data.files && typeof data.files === "object") {
       for (const [k, v] of Object.entries(data.files)) {
@@ -342,6 +365,11 @@ export class RegistryAgent extends DurableObject<Env> {
       await this.ctx.storage.put("packages_list", names);
     }
 
+    // A package is public (anonymously downloadable) when its org is empty.
+    // Publishers may explicitly set org to "" / null to publish to the public
+    // library; otherwise it inherits the publisher's auth org.
+    const org = data.org !== undefined ? (data.org || "") : auth.org;
+
     const metadata: PackageMetadata = {
       name: data.name,
       version: data.version,
@@ -354,7 +382,7 @@ export class RegistryAgent extends DurableObject<Env> {
       compiler_version: "0.1.0",
       nodes: data.nodes,
       edges: data.edges,
-      org: auth.org,
+      org,
     };
 
     await this.ctx.storage.put(`pkg:${data.name}:meta`, JSON.stringify(metadata));

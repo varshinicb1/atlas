@@ -42,7 +42,15 @@ impl<'a> Verifier<'a> {
                 let in_nodes = self.ir.nodes.iter().any(|n| n.id == e.dst);
                 let in_failures = self.ir.failure_modes.iter().any(|f| f.id == e.dst);
                 if !in_nodes && !in_failures {
-                    bad_edges.push(format!("#{} dst={}", i, e.dst));
+                    // A PartOf edge whose destination is a namespaced node id
+                    // (concept:/package:/api:/failure:) that is not defined locally
+                    // is a valid cross-package reference in the federated knowledge
+                    // graph — it is resolved at registry/graph-traversal time, not
+                    // at single-package verify time. Only a bare (non-namespaced)
+                    // destination that is missing locally is a genuinely dangling edge.
+                    if !is_external_reference(&e.dst) {
+                        bad_edges.push(format!("#{} dst={}", i, e.dst));
+                    }
                 }
             }
         }
@@ -136,6 +144,14 @@ impl<'a> Verifier<'a> {
 
 fn infer_api_kind(_edge: &atlas_ir::Edge) -> bool {
     true
+}
+
+/// A node id containing a namespace separator (e.g. `concept:foo`,
+/// `package:bar`, `api:baz/qux`) denotes a reference that may resolve in
+/// another package of the federated registry. Bare ids (`foo`) are local
+/// references and must exist within the package being verified.
+fn is_external_reference(id: &str) -> bool {
+    id.contains(':')
 }
 
 #[cfg(test)]
@@ -233,10 +249,12 @@ mod tests {
     #[test]
     fn test_verify_missing_node_in_edge_fails() {
         let mut ir = compliant_ir();
+        // A bare (non-namespaced) PartOf destination that is missing locally is a
+        // genuinely dangling edge and must fail verification.
         ir.add_edge(Edge {
             id: "e3".into(),
             src: "package:p".into(),
-            dst: "concept:ghost".into(),
+            dst: "ghostnode".into(),
             edge_type: EdgeType::PartOf,
             weight: 1.0,
             provenance: ref_(),
@@ -245,6 +263,24 @@ mod tests {
         let report = v.verify(None);
         assert!(!report.passed);
         assert!(report.checks.iter().any(|c| c.name == "API existence" && !c.passed));
+    }
+
+    #[test]
+    fn test_verify_external_part_of_reference_passes() {
+        let mut ir = compliant_ir();
+        // A namespaced PartOf destination not defined locally is a valid
+        // cross-package (federated) reference and must NOT fail verification.
+        ir.add_edge(Edge {
+            id: "e4".into(),
+            src: "package:p".into(),
+            dst: "concept:external-ecosystem".into(),
+            edge_type: EdgeType::PartOf,
+            weight: 1.0,
+            provenance: ref_(),
+        });
+        let v = Verifier::new(&ir);
+        let report = v.verify(None);
+        assert!(report.passed, "checks: {:?}", report.checks.iter().map(|c| &c.message).collect::<Vec<_>>());
     }
 
     #[test]

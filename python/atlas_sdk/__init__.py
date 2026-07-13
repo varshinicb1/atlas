@@ -7,6 +7,7 @@ from .models import (
     VerificationCheck,
     VerificationReport,
 )
+from .registry import Agent, RegistryClient
 
 __all__ = [
     "solve",
@@ -15,6 +16,9 @@ __all__ = [
     "compile",
     "install",
     "load",
+    "reason",
+    "Agent",
+    "RegistryClient",
     "Node",
     "SolveResult",
     "DecideResult",
