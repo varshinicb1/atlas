@@ -1,5 +1,6 @@
 use clap::{Parser, Subcommand};
 use std::path::{Path, PathBuf};
+use std::collections::{HashSet, VecDeque};
 use atlas_compiler::Compiler;
 use atlas_compiler::frontends::MdDocument;
 use atlas_compiler::frontends::decision::DecisionParser;
@@ -1049,8 +1050,7 @@ Website template cloned from [{url}]({url}) in {today}.
 }
 
 fn run_crawl(url: &str, name: Option<&str>, dir: Option<&PathBuf>, depth: usize, max_pages: usize, publish: bool, registry: &str, api_key: Option<&str>, org: &str, json: bool) -> Result<(), anyhow::Error> {
-    use scraper::{Html, Selector, Element};
-    use std::collections::{HashSet, VecDeque};
+    use scraper::{Html, Selector};
     use anyhow::Context;
 
     let base = url::Url::parse(url).with_context(|| format!("Invalid URL: {url}"))?;
@@ -1062,6 +1062,10 @@ fn run_crawl(url: &str, name: Option<&str>, dir: Option<&PathBuf>, depth: usize,
     let mut visited = HashSet::new();
     let mut queue = VecDeque::new();
     queue.push_back((url.to_string(), 0usize));
+
+    if depth > 0 {
+        try_discover_llms_txt(&base, &mut queue);
+    }
 
     let mut all_text = String::new();
     let mut all_headings: Vec<String> = Vec::new();
@@ -1083,42 +1087,70 @@ fn run_crawl(url: &str, name: Option<&str>, dir: Option<&PathBuf>, depth: usize,
         };
         let ct_header = resp.headers().get("content-type");
         let content_type = ct_header.and_then(|v| v.to_str().ok()).unwrap_or("");
-        if !content_type.contains("text/html") && !content_type.contains("application/xhtml") { continue; }
+        if !content_type.contains("text/html") && !content_type.contains("text/plain") && !content_type.contains("application/xhtml") { continue; }
+        let is_llms = page_url.contains("/llms.txt") || page_url.contains("llms-full.txt");
         let body: String = match resp.into_body().read_to_string() {
             Ok(b) => b,
             Err(e) => { eprintln!("  skip {page_url}: {e}"); continue; }
         };
         pages_crawled += 1;
 
+        if is_llms {
+            let sections = parse_llms_txt(&body);
+            for (heading, content) in &sections {
+                if !all_headings.contains(heading) {
+                    all_headings.push(heading.clone());
+                }
+                all_text.push_str(&format!("## {heading}\n\n{content}\n\n"));
+            }
+            if sections.is_empty() {
+                all_text.push_str(&body);
+            }
+            continue;
+        }
+
         let doc = Html::parse_document(&body);
+
         let title_sel = Selector::parse("title").unwrap();
         if let Some(t) = doc.select(&title_sel).next() {
-            let t_text = t.text().collect::<String>();
-            if !all_text.contains(&t_text) {
-                all_text.push_str(&format!("# {}\n\n", t_text.trim()));
+            let t_raw = t.text().collect::<String>();
+            let t_text = t_raw.trim();
+            if !t_text.is_empty() && !all_text.contains(t_text) {
+                all_text.push_str(&format!("# {}\n\n", t_text));
             }
         }
 
         let meta_sel = Selector::parse(r#"meta[name="description"]"#).unwrap();
-        if let Some(m) = doc.select(&meta_sel).next() {
-            if let Some(desc) = m.value().attr("content") {
-                all_text.push_str(&format!("{desc}\n\n"));
+        let og_sel = Selector::parse(r#"meta[property="og:description"]"#).unwrap();
+        for sel in &[&meta_sel, &og_sel] {
+            if let Some(m) = doc.select(sel).next() {
+                if let Some(desc) = m.value().attr("content") {
+                    let d = desc.trim();
+                    if !d.is_empty() && !all_text.contains(d) {
+                        all_text.push_str(&format!("{d}\n\n"));
+                    }
+                }
+            }
+        }
+
+        let all_body_sel = Selector::parse("main, article, .content, .documentation, .docs, .prose, .markdown, .post, [role=main]").unwrap();
+        let body_container = doc.select(&all_body_sel).next().unwrap_or(doc.root_element());
+
+        let para_sel = Selector::parse("p, li, td").unwrap();
+        for para in body_container.select(&para_sel) {
+            let text = para.text().collect::<String>().trim().to_string();
+            if text.len() > 20 && !all_text.contains(&text) {
+                all_text.push_str(&format!("{text}\n\n"));
             }
         }
 
         for h_tag in ["h1", "h2", "h3"] {
             let sel = Selector::parse(h_tag).unwrap();
-            for heading in doc.select(&sel) {
+            for heading in body_container.select(&sel) {
                 let text = heading.text().collect::<String>().trim().to_string();
                 if !text.is_empty() && !all_headings.contains(&text) {
                     all_headings.push(text.clone());
                     all_text.push_str(&format!("## {text}\n\n"));
-                    if let Some(next) = heading.next_sibling_element() {
-                        let ctx = next.text().collect::<String>().trim().to_string();
-                        if !ctx.is_empty() {
-                            all_text.push_str(&format!("{ctx}\n\n"));
-                        }
-                    }
                 }
             }
         }
@@ -1135,7 +1167,6 @@ fn run_crawl(url: &str, name: Option<&str>, dir: Option<&PathBuf>, depth: usize,
         let warn_selectors = [
             Selector::parse(r#"[class*="warning"]"#).unwrap(),
             Selector::parse(r#"[class*="note"]"#).unwrap(),
-            Selector::parse(r#"[class*="tip"]"#).unwrap(),
             Selector::parse(r#"[class*="caution"]"#).unwrap(),
             Selector::parse(r#"[class*="danger"]"#).unwrap(),
             Selector::parse("blockquote").unwrap(),
@@ -1160,6 +1191,7 @@ fn run_crawl(url: &str, name: Option<&str>, dir: Option<&PathBuf>, depth: usize,
                             && !abs_url.as_str().contains('#')
                             && !abs_url.as_str().contains("mailto:")
                             && !abs_url.as_str().contains("tel:")
+                            && !is_locale_variant(&base, &abs_url)
                         {
                             let clean = normalize_url(&abs_url);
                             if !visited.contains(&clean) {
@@ -1187,7 +1219,9 @@ fn run_crawl(url: &str, name: Option<&str>, dir: Option<&PathBuf>, depth: usize,
         val.trim().lines().map(|l| format!("      {l}")).collect::<Vec<_>>().join("\n")
     }
 
+    let max_yaml_items = 100;
     let concepts_yaml = all_headings.iter()
+        .take(max_yaml_items)
         .enumerate()
         .map(|(i, h)| format!(r#"  - name: "{}"
     id: concept:page_{i}_{pkg_name}
@@ -1197,8 +1231,9 @@ fn run_crawl(url: &str, name: Option<&str>, dir: Option<&PathBuf>, depth: usize,
         .join("\n");
 
     let apis_yaml = all_code.iter()
+        .filter(|c| c.len() < 500)
+        .take(max_yaml_items)
         .enumerate()
-        .filter(|(_, c)| c.len() < 500)
         .map(|(i, c)| {
             let name = c.lines().next().unwrap_or(c).chars().take(60).collect::<String>();
             format!(r#"  - name: "{}"
@@ -1213,6 +1248,7 @@ fn run_crawl(url: &str, name: Option<&str>, dir: Option<&PathBuf>, depth: usize,
         .join("\n");
 
     let failures_yaml = all_warnings.iter()
+        .take(max_yaml_items)
         .enumerate()
         .map(|(i, (text, cls))| {
             let symptom = text.chars().take(80).collect::<String>();
@@ -1261,9 +1297,25 @@ Auto-generated knowledge package crawled from {url}.
 "#);
 
     let md_path = out_dir.join(format!("{pkg_name}.md"));
-    std::fs::write(&md_path, &package_md)?;
+    let max_bytes = 400 * 1024;
+    let final_md = if package_md.len() > max_bytes {
+        let mut front_bytes = 0usize;
+        if let Some(end) = package_md.find("\n---\n") {
+            if end > 0 { front_bytes = end + 5; }
+        }
+        let body_keep = max_bytes.saturating_sub(front_bytes);
+        let truncated_body: String = package_md[front_bytes..].chars().take(body_keep).collect();
+        let mut result = String::with_capacity(front_bytes + 100 + truncated_body.len());
+        result.push_str(&package_md[..front_bytes]);
+        result.push_str("\n\n_Content truncated at 400KB._\n\n");
+        result.push_str(&truncated_body);
+        result
+    } else {
+        package_md
+    };
+    std::fs::write(&md_path, &final_md)?;
 
-    let size_kb = package_md.len() / 1024;
+    let size_kb = final_md.len() / 1024;
 
     if json {
         let output = serde_json::json!({
@@ -1292,6 +1344,52 @@ Auto-generated knowledge package crawled from {url}.
     }
 
     Ok(())
+}
+
+fn is_locale_variant(base: &url::Url, other: &url::Url) -> bool {
+    let base_segs: Vec<&str> = base.path_segments().map(|s| s.collect()).unwrap_or_default();
+    let other_segs: Vec<&str> = other.path_segments().map(|s| s.collect()).unwrap_or_default();
+    let locales = ["de","es","fr","it","pt","ru","ja","ko","zh","ar","hi","nl","pl","tr","vi","th","sv","da","fi","nb","cs","hu","ro","uk","el","he","id","ms","tl","bn","ta","te","mr","ne","gu","kn","ml","si","my","km","lo","ka","hy","az","eu","gl","ca","sr","hr","sl","sk","lt","lv","et","is","mt","sq","mk","bg","en"];
+    let base_locale = base_segs.first().and_then(|s| if locales.contains(s) { Some(*s) } else { None });
+    let other_locale = other_segs.first().and_then(|s| if locales.contains(s) { Some(*s) } else { None });
+    match (base_locale, other_locale) {
+        (Some(bl), Some(ol)) => bl != ol,
+        (None, Some(_)) => true,
+        _ => false,
+    }
+}
+
+fn try_discover_llms_txt(base: &url::Url, queue: &mut VecDeque<(String, usize)>) {
+    for path in &["/llms.txt", "/llms-full.txt"] {
+        if let Ok(u) = base.join(path) {
+            let s = u.as_str().to_string();
+            queue.push_back((s, 0));
+        }
+    }
+}
+
+fn parse_llms_txt(body: &str) -> Vec<(String, String)> {
+    let mut sections = Vec::new();
+    let mut current_heading = String::new();
+    let mut current_content = String::new();
+
+    for line in body.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with('#') {
+            if !current_heading.is_empty() {
+                sections.push((current_heading.clone(), current_content.clone()));
+            }
+            current_heading = trimmed.trim_start_matches('#').trim().to_string();
+            current_content.clear();
+        } else {
+            if !current_content.is_empty() { current_content.push('\n'); }
+            current_content.push_str(line);
+        }
+    }
+    if !current_heading.is_empty() {
+        sections.push((current_heading, current_content));
+    }
+    sections
 }
 
 fn normalize_url(url: &url::Url) -> String {
