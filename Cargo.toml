@@ -10,6 +10,8 @@ members = [
 [workspace.package]
 version = "0.3.0"
 edition = "2021"
+license = "MIT"
+description = "Atlas — the Knowledge Operating System for AI agents"
 
 [workspace.dependencies]
 atlas-ir = { path = "atlas-ir" }

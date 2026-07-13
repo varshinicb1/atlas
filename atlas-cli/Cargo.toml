@@ -2,6 +2,8 @@
 name = "atlas-cli"
 version.workspace = true
 edition.workspace = true
+license.workspace = true
+description = "Atlas CLI — compile, solve, decide, verify, and publish knowledge packages for AI agents"
 
 [[bin]]
 name = "atlas"

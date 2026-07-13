@@ -2,6 +2,8 @@
 name = "atlas-ir"
 version.workspace = true
 edition.workspace = true
+license.workspace = true
+description = "Intermediate Representation (IR) for the Atlas knowledge graph — 11 node kinds, 13 edge types, embeddings, decision trees"
 
 [dependencies]
 serde.workspace = true
