@@ -116,6 +116,35 @@ enum Commands {
         #[arg(long, default_value_t = false)]
         rebuild: bool,
     },
+    /// Crawl documentation from a URL and generate a knowledge package
+    Crawl {
+        /// URL of the documentation to crawl
+        url: String,
+        /// Package name (defaults to domain name)
+        #[arg(short, long)]
+        name: Option<String>,
+        /// Output directory (defaults to ./<name>)
+        #[arg(short, long)]
+        dir: Option<PathBuf>,
+        /// Maximum crawl depth (default: 2)
+        #[arg(long, default_value_t = 2)]
+        depth: usize,
+        /// Maximum pages to crawl (default: 50)
+        #[arg(long, default_value_t = 50)]
+        max_pages: usize,
+        /// Auto-publish to registry after crawl
+        #[arg(long)]
+        publish: bool,
+        /// Registry URL for publish
+        #[arg(long, default_value = "https://atlas-hub-registry.cbvarshini1.workers.dev")]
+        registry: String,
+        /// API key for authenticated publish
+        #[arg(long)]
+        api_key: Option<String>,
+        /// Organization scope
+        #[arg(long, default_value = "")]
+        org: String,
+    },
     /// Export an .atlas bundle to LLM-friendly formats (XML/Markdown/JSON)
     Export {
         /// Path to the .atlas bundle
@@ -208,6 +237,7 @@ fn main() -> Result<(), anyhow::Error> {
         Commands::Search { query, registry } => run_search(&query, &registry, cli.json),
         Commands::Publish { path, registry, api_key, org } => run_publish(path, &registry, api_key.as_deref(), &org, cli.json),
         Commands::Clone { url, name, dir, assets, rebuild } => run_clone(&url, name.as_deref(), dir.as_ref(), assets, rebuild, cli.json),
+        Commands::Crawl { url, name, dir, depth, max_pages, publish, registry, api_key, org } => run_crawl(&url, name.as_deref(), dir.as_ref(), depth, max_pages, publish, &registry, api_key.as_deref(), &org, cli.json),
         Commands::Export { bundle, style, out, tokens } => run_export(&bundle, &style, out.as_ref(), tokens, cli.json),
         Commands::Skill { action } => match action {
             SkillAction::Generate { path, out, name, risk, category } => run_skill_generate(&path, out.as_ref(), name.as_deref(), &risk, &category, cli.json),
@@ -1016,6 +1046,260 @@ Website template cloned from [{url}]({url}) in {today}.
         println!("Next: atlas compile {}.md --out {}.atlas", target.display(), target.display());
     }
     Ok(())
+}
+
+fn run_crawl(url: &str, name: Option<&str>, dir: Option<&PathBuf>, depth: usize, max_pages: usize, publish: bool, registry: &str, api_key: Option<&str>, org: &str, json: bool) -> Result<(), anyhow::Error> {
+    use scraper::{Html, Selector, Element};
+    use std::collections::{HashSet, VecDeque};
+    use anyhow::Context;
+
+    let base = url::Url::parse(url).with_context(|| format!("Invalid URL: {url}"))?;
+    let domain = base.host_str().unwrap_or("unknown").to_string();
+    let pkg_name = name.unwrap_or(&domain).to_string();
+    let out_dir = dir.map(|d| d.to_path_buf()).unwrap_or_else(|| PathBuf::from(&pkg_name));
+    std::fs::create_dir_all(&out_dir)?;
+
+    let mut visited = HashSet::new();
+    let mut queue = VecDeque::new();
+    queue.push_back((url.to_string(), 0usize));
+
+    let mut all_text = String::new();
+    let mut all_headings: Vec<String> = Vec::new();
+    let mut all_code: Vec<String> = Vec::new();
+    let mut all_warnings: Vec<(String, String)> = Vec::new();
+    let mut pages_crawled = 0usize;
+
+    while let Some((page_url, page_depth)) = queue.pop_front() {
+        if visited.contains(&page_url) || pages_crawled >= max_pages { continue; }
+
+        eprintln!("Crawling: {page_url}");
+        visited.insert(page_url.clone());
+
+        let resp = match ureq::get(&page_url)
+            .call()
+        {
+            Ok(r) => r,
+            Err(e) => { eprintln!("  skip {page_url}: {e}"); continue; }
+        };
+        let ct_header = resp.headers().get("content-type");
+        let content_type = ct_header.and_then(|v| v.to_str().ok()).unwrap_or("");
+        if !content_type.contains("text/html") && !content_type.contains("application/xhtml") { continue; }
+        let body: String = match resp.into_body().read_to_string() {
+            Ok(b) => b,
+            Err(e) => { eprintln!("  skip {page_url}: {e}"); continue; }
+        };
+        pages_crawled += 1;
+
+        let doc = Html::parse_document(&body);
+        let title_sel = Selector::parse("title").unwrap();
+        if let Some(t) = doc.select(&title_sel).next() {
+            let t_text = t.text().collect::<String>();
+            if !all_text.contains(&t_text) {
+                all_text.push_str(&format!("# {}\n\n", t_text.trim()));
+            }
+        }
+
+        let meta_sel = Selector::parse(r#"meta[name="description"]"#).unwrap();
+        if let Some(m) = doc.select(&meta_sel).next() {
+            if let Some(desc) = m.value().attr("content") {
+                all_text.push_str(&format!("{desc}\n\n"));
+            }
+        }
+
+        for h_tag in ["h1", "h2", "h3"] {
+            let sel = Selector::parse(h_tag).unwrap();
+            for heading in doc.select(&sel) {
+                let text = heading.text().collect::<String>().trim().to_string();
+                if !text.is_empty() && !all_headings.contains(&text) {
+                    all_headings.push(text.clone());
+                    all_text.push_str(&format!("## {text}\n\n"));
+                    if let Some(next) = heading.next_sibling_element() {
+                        let ctx = next.text().collect::<String>().trim().to_string();
+                        if !ctx.is_empty() {
+                            all_text.push_str(&format!("{ctx}\n\n"));
+                        }
+                    }
+                }
+            }
+        }
+
+        let code_sel = Selector::parse("pre code, code").unwrap();
+        for code_block in doc.select(&code_sel) {
+            let text = code_block.text().collect::<String>().trim().to_string();
+            if text.len() > 20 && !all_code.contains(&text) {
+                all_code.push(text.clone());
+                all_text.push_str(&format!("```\n{text}\n```\n\n"));
+            }
+        }
+
+        let warn_selectors = [
+            Selector::parse(r#"[class*="warning"]"#).unwrap(),
+            Selector::parse(r#"[class*="note"]"#).unwrap(),
+            Selector::parse(r#"[class*="tip"]"#).unwrap(),
+            Selector::parse(r#"[class*="caution"]"#).unwrap(),
+            Selector::parse(r#"[class*="danger"]"#).unwrap(),
+            Selector::parse("blockquote").unwrap(),
+        ];
+        for warn_sel in &warn_selectors {
+            for el in doc.select(warn_sel) {
+                let text = el.text().collect::<String>().trim().to_string();
+                if text.len() > 30 && !all_warnings.iter().any(|(s,_)| s == &text) {
+                    let class_name = el.value().classes().next().unwrap_or("note");
+                    all_warnings.push((text.clone(), class_name.to_string()));
+                    all_text.push_str(&format!("> **{class_name}**: {text}\n\n"));
+                }
+            }
+        }
+
+        if page_depth < depth {
+            let link_sel = Selector::parse("a[href]").unwrap();
+            for link in doc.select(&link_sel) {
+                if let Some(href) = link.value().attr("href") {
+                    if let Ok(abs_url) = base.join(href) {
+                        if abs_url.host_str() == Some(&domain)
+                            && !abs_url.as_str().contains('#')
+                            && !abs_url.as_str().contains("mailto:")
+                            && !abs_url.as_str().contains("tel:")
+                        {
+                            let clean = normalize_url(&abs_url);
+                            if !visited.contains(&clean) {
+                                queue.push_back((clean, page_depth + 1));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if pages_crawled == 0 {
+        anyhow::bail!("No pages crawled from {url}");
+    }
+
+    let concept_count = all_headings.len();
+    let api_count = all_code.len();
+    let failure_count = all_warnings.len();
+
+    fn esc(val: &str) -> String {
+        val.replace('\\', "\\\\").replace('"', "\\\"")
+    }
+    fn yaml_block(val: &str) -> String {
+        val.trim().lines().map(|l| format!("      {l}")).collect::<Vec<_>>().join("\n")
+    }
+
+    let concepts_yaml = all_headings.iter()
+        .enumerate()
+        .map(|(i, h)| format!(r#"  - name: "{}"
+    id: concept:page_{i}_{pkg_name}
+    description: |
+{}"#, esc(h), yaml_block(&format!("Extracted from documentation: {h}"))))
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    let apis_yaml = all_code.iter()
+        .enumerate()
+        .filter(|(_, c)| c.len() < 500)
+        .map(|(i, c)| {
+            let name = c.lines().next().unwrap_or(c).chars().take(60).collect::<String>();
+            format!(r#"  - name: "{}"
+    id: api:crawl_{i}_{pkg_name}
+    signature: |
+{}
+    returns: See documentation
+    description: |
+      Extracted code example from documentation."#, esc(&name), yaml_block(c))
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    let failures_yaml = all_warnings.iter()
+        .enumerate()
+        .map(|(i, (text, cls))| {
+            let symptom = text.chars().take(80).collect::<String>();
+            format!(r#"  - id: failure:crawl_{i}_{pkg_name}
+    symptom: |
+{}
+    cause: |
+      {cls} issue
+    fix: |
+      Refer to official documentation for resolution."#, yaml_block(&symptom))
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    let package_md = format!(r#"---
+kind: Package
+id: package:{pkg_name}
+name: "{pkg_name} Knowledge Package"
+version: "0.1.0"
+purpose: |
+  Auto-generated knowledge package crawled from {url}.
+  Covers {pages_crawled} pages of documentation.
+problem_solved: |
+  Provides structured knowledge extracted from the official {domain} documentation
+  for use in AI agent decision-making.
+install: |
+  ```bash
+  atlas install {pkg_name}.md
+  ```
+concepts:
+{concepts_yaml}
+apis:
+{apis_yaml}
+failures:
+{failures_yaml}
+---
+
+# {pkg_name}
+
+Auto-generated knowledge package crawled from {url}.
+
+**Pages crawled**: {pages_crawled}
+**Source**: {url}
+
+{all_text}
+"#);
+
+    let md_path = out_dir.join(format!("{pkg_name}.md"));
+    std::fs::write(&md_path, &package_md)?;
+
+    let size_kb = package_md.len() / 1024;
+
+    if json {
+        let output = serde_json::json!({
+            "package": pkg_name,
+            "pages_crawled": pages_crawled,
+            "concepts": concept_count,
+            "apis": api_count,
+            "failures": failure_count,
+            "output": md_path.to_string_lossy(),
+            "size_kb": size_kb,
+        });
+        println!("{}", serde_json::to_string(&output)?);
+    } else {
+        println!("✅ Crawled {pages_crawled} pages from {url}");
+        println!("   {concept_count} concepts, {api_count} code snippets, {failure_count} warnings");
+        println!("   Package written to {}", md_path.display());
+        println!("   Size: {size_kb}KB");
+        println!();
+    }
+
+    if publish {
+        let compile_out = out_dir.join("bundle.atlas");
+        run_compile(vec![md_path.clone()], &compile_out, false, false)?;
+        run_verify(&compile_out, None, None, false)?;
+        run_publish(compile_out, registry, api_key, org, false)?;
+    }
+
+    Ok(())
+}
+
+fn normalize_url(url: &url::Url) -> String {
+    let mut s = url.as_str().trim_end_matches('/').to_string();
+    if s.ends_with("/index.html") {
+        s = s.trim_end_matches("/index.html").to_string();
+    }
+    s
 }
 
 fn run_export(bundle: &Path, style: &str, out: Option<&PathBuf>, tokens: bool, json: bool) -> Result<(), anyhow::Error> {
