@@ -11,7 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **CLI** (`atlas` binary) with commands: `compile`, `solve`, `decide`, `verify`, `install`, `reason`, `dump`, `init`, `search`, `publish`
 - **Compiler** — Markdown + YAML → canonical Engineering IR (11 node kinds, 13 edge types)
 - **Runtime** — memory-mapped loader, hybrid search, decision tree walker, verification engine, pluggable reasoner
-- **Python SDK** — `atlas-sdk` with typed dataclasses
+- **Python SDK** — `atlas-knowledge-sdk` with typed dataclasses
 - **MCP server** — 5 tools + 1 resource template (stdio)
 - **Studio** — Next.js 16 + React Flow graph explorer
 - **VS Code extension** — in-editor knowledge graph explorer

@@ -53,7 +53,7 @@ cd atlas
 cargo build --release
 
 # Or via Python SDK
-pip install atlas-sdk
+pip install atlas-knowledge-sdk
 ```
 
 ### Compile knowledge
@@ -88,9 +88,9 @@ print(result)
 |---|---|---|
 | **CLI** | `atlas-cli/` | `atlas` binary — compile, solve, decide, verify, reason, dump, init, search, publish |
 | **Compiler** | `atlas-compiler/` | Markdown + YAML → canonical Engineering IR |
-| **Runtime** | `atlas-runtime/` | Memory-mapped loader, decision engine, verification, reasoner |
+| **Runtime** | `atlas-runtime/` | Memory-mapped loader, decision engine, verification, reasoner (`atlas-knowledge` crate) |
 | **IR** | `atlas-ir/` | 11 node kinds, 13 edge types, embeddings, decision trees |
-| **Python SDK** | `python/` | `atlas-sdk` — typed dataclasses wrapping the CLI |
+| **Python SDK** | `python/` | `atlas-knowledge-sdk` — typed dataclasses wrapping the CLI |
 | **MCP Server** | `mcp-server/` | 5 tools + resource template (stdio) |
 | **Studio** | `studio/` | Next.js 16 + React Flow graph explorer |
 | **VS Code Extension** | `vscode-atlas/` | In-editor knowledge graph explorer |

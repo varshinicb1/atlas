@@ -7,7 +7,7 @@ Build Atlas into a billion-dollar company: the Knowledge Operating System that m
 
 ### Working
 - Rust CLI: `compile`, `solve`, `decide`, `verify`, `install`, `reason`, `dump`, `init`, `search`, `publish` — binary named `atlas`, all with `--json`. Publish reads version/tags from YAML frontmatter.
-- Python SDK: `pip install atlas-sdk` — wraps CLI, returns typed dataclasses (Node dataclass has confidence field)
+- Python SDK: `pip install atlas-knowledge-sdk` — wraps CLI, returns typed dataclasses (Node dataclass has confidence field)
 - MCP server: 5 tools + 1 resource template, verified via stdio
 - Studio: Next.js 16 + React Flow graph explorer (basic)
 - Knowledge packages (13): atlas, flutter_core, riverpod, rust_patterns, typescript_7_migration, typescript_nextjs, python_patterns, go_patterns, react_patterns, docker_kubernetes, postgres_patterns, cloudflare_workers, mycelium_sync — all pass verify with 0 dangling edges, all published to registry
@@ -54,5 +54,5 @@ Build Atlas into a billion-dollar company: the Knowledge Operating System that m
 - **Target**: AI engineering teams (2M globally), enterprise platforms, regulated industries
 - **Competition**: smolagents (28K★), LangChain (95K★), CrewAI (28K★), AutoGen (40K★)
 - **Unfair advantage**: Only architecture with deterministic decision trees, built-in verification, cryptographic audit trails, enterprise registry
-- **Viral hook**: `pip install atlas-sdk; from atlas_sdk import Agent; agent.solve("question")`
+- **Viral hook**: `pip install atlas-knowledge-sdk; from atlas_sdk import Agent; agent.solve("question")`
 - **Pricing**: Free & open source (Apache 2.0). Enterprise features (SSO, RBAC, audit) included for adoption, not paywalled

@@ -168,7 +168,7 @@ smolagents, LangChain, CrewAI, AutoGen — **none of these can provide complianc
 ### Primary: AI Engineering Teams (2026: ~2M worldwide)
 - **Pain**: Agents are unreliable, expensive, and un-auditable
 - **Atlas solution**: Deterministic knowledge layer beneath agents
-- **Adoption vector**: `pip install atlas-sdk` → `atlas install` → add to CI/CD
+- **Adoption vector**: `pip install atlas-knowledge-sdk` → `atlas install` → add to CI/CD
 
 ### Secondary: Enterprise Platforms (LangChain, CrewAI users)
 - **Pain**: Frameworks are great for prototyping, terrible for production governance
@@ -194,7 +194,7 @@ smolagents, LangChain, CrewAI, AutoGen — **none of these can provide complianc
 
 **1. The "3-Line Install" Experience**
 ```
-pip install atlas-sdk
+pip install atlas-knowledge-sdk
 atlas install packages/flutter_core.md
 from atlas_sdk import AtlasAgent; agent = AtlasAgent("flutter_core"); agent.solve("stateful widget")
 ```
@@ -361,7 +361,7 @@ Must be measurably simpler than smolagents (which is already simple). Target: **
 ## 9. Immediate Action Items (Next 90 Days)
 
 ### Week 1-2: Ship the "3-Line Install"
-- [ ] Polish `pip install atlas-sdk` → `from atlas_sdk import Agent`
+- [ ] Polish `pip install atlas-knowledge-sdk` → `from atlas_sdk import Agent`
 - [ ] `atlas init --template` with 5 starter templates
 - [ ] Knowledge package for: Python, Rust, TypeScript, Flutter, Go
 

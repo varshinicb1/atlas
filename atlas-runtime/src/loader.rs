@@ -60,7 +60,7 @@ impl AtlasBundle {
 
         let mut ir = EngineeringIR::new(atlas_ir::Meta {
             schema_version: "0.1.0".into(),
-            generator: "atlas-runtime".into(),
+            generator: "atlas-knowledge".into(),
             created_at: 0,
             source_manifest: Vec::new(),
         });

@@ -4,8 +4,8 @@ use atlas_compiler::Compiler;
 use atlas_compiler::frontends::MdDocument;
 use atlas_compiler::frontends::decision::DecisionParser;
 use atlas_compiler::binary;
-use atlas_runtime::reasoner::Reasoner;
-use atlas_runtime::loader::AtlasBundle;
+use atlas_knowledge::reasoner::Reasoner;
+use atlas_knowledge::loader::AtlasBundle;
 
 mod templates;
 
@@ -328,7 +328,7 @@ fn run_solve(bundle_path: &Path, query: &str, json: bool) -> Result<(), anyhow::
     if query.trim().is_empty() {
         anyhow::bail!("Error: query cannot be empty. Please provide a search query.");
     }
-    let mut runtime = atlas_runtime::Runtime::new();
+    let mut runtime = atlas_knowledge::Runtime::new();
     let name = runtime.load(bundle_path)?;
     let result = runtime.solve(&name, query)?;
 
@@ -391,7 +391,7 @@ fn run_decide(bundle_path: &Path, query: &str, context: &[KeyVal], json: bool) -
     if query.trim().is_empty() {
         anyhow::bail!("Error: query cannot be empty. Please provide a search query.");
     }
-    let mut runtime = atlas_runtime::Runtime::new();
+    let mut runtime = atlas_knowledge::Runtime::new();
     let name = runtime.load(bundle_path)?;
     let mut ctx = std::collections::HashMap::new();
     for kv in context { ctx.insert(kv.key.clone(), kv.value.clone()); }
@@ -438,7 +438,7 @@ fn run_decide(bundle_path: &Path, query: &str, context: &[KeyVal], json: bool) -
 }
 
 fn run_verify(bundle_path: &Path, artifact: Option<&str>, policy: Option<&str>, json: bool) -> Result<(), anyhow::Error> {
-    let mut runtime = atlas_runtime::Runtime::new();
+    let mut runtime = atlas_knowledge::Runtime::new();
     let name = runtime.load(bundle_path)?;
     let report = if let Some(p) = policy {
         runtime.verify_with_policy(&name, p)?
@@ -465,7 +465,7 @@ fn run_reason(bundle_path: &Path, query: &str, model: Option<String>, json: bool
     if query.trim().is_empty() {
         anyhow::bail!("Error: query cannot be empty. Please provide a search query.");
     }
-    let mut runtime = atlas_runtime::Runtime::new();
+    let mut runtime = atlas_knowledge::Runtime::new();
     let name = runtime.load(bundle_path)?;
     let solve_result = runtime.solve(&name, query)?;
     
@@ -473,7 +473,7 @@ fn run_reason(bundle_path: &Path, query: &str, model: Option<String>, json: bool
     let context = std::collections::HashMap::new();
     let decide_result = runtime.decide(&name, query, Some(&context)).ok().and_then(|r| r);
     
-    let ctx = atlas_runtime::reasoner::ReasonContext {
+    let ctx = atlas_knowledge::reasoner::ReasonContext {
         query,
         bundle: &solve_result.bundle,
         confidence: solve_result.confidence,
@@ -483,10 +483,10 @@ fn run_reason(bundle_path: &Path, query: &str, model: Option<String>, json: bool
     };
     
     let answer = if let Some(m) = model {
-        let reasoner = atlas_runtime::reasoner::OllamaReasoner::new(&m, "http://localhost:11434");
+        let reasoner = atlas_knowledge::reasoner::OllamaReasoner::new(&m, "http://localhost:11434");
         reasoner.reason(query, &ctx)?
     } else {
-        let reasoner = atlas_runtime::reasoner::TemplateReasoner;
+        let reasoner = atlas_knowledge::reasoner::TemplateReasoner;
         reasoner.reason(query, &ctx)?
     };
     
@@ -503,7 +503,7 @@ fn run_reason(bundle_path: &Path, query: &str, model: Option<String>, json: bool
 }
 
 fn run_dump(bundle_path: &Path, json: bool) -> Result<(), anyhow::Error> {
-    let mut runtime = atlas_runtime::Runtime::new();
+    let mut runtime = atlas_knowledge::Runtime::new();
     let name = runtime.load(bundle_path)?;
     let bundle = runtime.get(&name)
         .ok_or_else(|| anyhow::anyhow!("Bundle not loaded"))?;

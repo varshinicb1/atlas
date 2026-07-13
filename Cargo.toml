@@ -14,9 +14,9 @@ license = "MIT"
 description = "Atlas — the Knowledge Operating System for AI agents"
 
 [workspace.dependencies]
-atlas-ir = { path = "atlas-ir" }
-atlas-compiler = { path = "atlas-compiler" }
-atlas-runtime = { path = "atlas-runtime" }
+atlas-ir = { path = "atlas-ir", version = "0.3.0" }
+atlas-compiler = { path = "atlas-compiler", version = "0.3.0" }
+atlas-knowledge = { path = "atlas-runtime", version = "0.3.0" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 serde_yaml = "0.9"

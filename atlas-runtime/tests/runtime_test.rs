@@ -4,8 +4,8 @@ mod tests {
     use atlas_compiler::frontends::decision::DecisionParser;
     use atlas_compiler::frontends::MdDocument;
     use atlas_compiler::Compiler;
-    use atlas_runtime::reasoner::{Reasoner, ReasonContext, TemplateReasoner};
-    use atlas_runtime::Runtime;
+    use atlas_knowledge::reasoner::{Reasoner, ReasonContext, TemplateReasoner};
+    use atlas_knowledge::Runtime;
 
     const DEMO_MD: &str = r#"---
 kind: Package

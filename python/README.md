@@ -3,7 +3,7 @@
 Python SDK for the [Atlas Knowledge Operating System](https://atlas-sh.pages.dev) — the Terraform for AI agent knowledge.
 
 ```bash
-pip install atlas-sdk
+pip install atlas-knowledge-sdk
 ```
 
 ## Quickstart
