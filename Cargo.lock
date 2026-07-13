@@ -95,22 +95,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d3fb67a6e08acf24fdeccbac2cb6ac4305825bd1f117462e0e6f2f193345ad56"
 
 [[package]]
-name = "atlas-cli"
-version = "0.3.0"
-dependencies = [
- "anyhow",
- "atlas-compiler",
- "atlas-ir",
- "atlas-knowledge",
- "clap",
- "dirs",
- "env_logger",
- "serde",
- "serde_json",
- "ureq",
-]
-
-[[package]]
 name = "atlas-compiler"
 version = "0.3.0"
 dependencies = [
@@ -148,6 +132,22 @@ dependencies = [
  "serde_json",
  "ureq",
  "zstd",
+]
+
+[[package]]
+name = "atlas-knowledge-cli"
+version = "0.3.0"
+dependencies = [
+ "anyhow",
+ "atlas-compiler",
+ "atlas-ir",
+ "atlas-knowledge",
+ "clap",
+ "dirs",
+ "env_logger",
+ "serde",
+ "serde_json",
+ "ureq",
 ]
 
 [[package]]
