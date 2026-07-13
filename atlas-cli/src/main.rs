@@ -95,6 +95,9 @@ enum Commands {
         /// API key for authenticated publish
         #[arg(long)]
         api_key: Option<String>,
+        /// Organization scope (empty string for public packages)
+        #[arg(long, default_value = "")]
+        org: String,
     },
     /// Clone a website as a template knowledge package
     Clone {
@@ -203,7 +206,7 @@ fn main() -> Result<(), anyhow::Error> {
         Commands::Dump { bundle } => run_dump(&bundle, cli.json),
         Commands::Init { name, template, dir } => run_init(&name, &template, dir.as_ref()),
         Commands::Search { query, registry } => run_search(&query, &registry, cli.json),
-        Commands::Publish { path, registry, api_key } => run_publish(path, &registry, api_key.as_deref(), cli.json),
+        Commands::Publish { path, registry, api_key, org } => run_publish(path, &registry, api_key.as_deref(), &org, cli.json),
         Commands::Clone { url, name, dir, assets, rebuild } => run_clone(&url, name.as_deref(), dir.as_ref(), assets, rebuild, cli.json),
         Commands::Export { bundle, style, out, tokens } => run_export(&bundle, &style, out.as_ref(), tokens, cli.json),
         Commands::Skill { action } => match action {
@@ -609,7 +612,7 @@ fn run_search(query: &str, registry: &str, json: bool) -> Result<(), anyhow::Err
     Ok(())
 }
 
-fn run_publish(path: PathBuf, registry: &str, api_key: Option<&str>, json: bool) -> Result<(), anyhow::Error> {
+fn run_publish(path: PathBuf, registry: &str, api_key: Option<&str>, org: &str, json: bool) -> Result<(), anyhow::Error> {
     if !path.exists() {
         anyhow::bail!("Path does not exist: {}", path.display());
     }
@@ -631,11 +634,20 @@ fn run_publish(path: PathBuf, registry: &str, api_key: Option<&str>, json: bool)
                 let filename = p.file_name().unwrap().to_string_lossy().to_string();
                 let text = std::fs::read_to_string(&p)?;
                 if description.is_empty() && p.extension().is_some_and(|e| e == "md") {
-                    for line in text.lines() {
-                        let line = line.trim();
-                        if !line.is_empty() && !line.starts_with('#') {
-                            description = line.to_string();
-                            break;
+                    let lines: Vec<&str> = text.lines().collect();
+                    if lines.len() >= 3 && lines[0].trim() == "---" {
+                        description = lines[1..].iter().find_map(|l| {
+                            let l = l.trim();
+                            l.strip_prefix("purpose:").map(|v| v.trim().trim_matches('"').to_string())
+                        }).unwrap_or_default();
+                    }
+                    if description.is_empty() {
+                        for line in &lines {
+                            let line = line.trim();
+                            if !line.is_empty() && !line.starts_with('#') && line != "---" {
+                                description = line.to_string();
+                                break;
+                            }
                         }
                     }
                 }
@@ -645,11 +657,20 @@ fn run_publish(path: PathBuf, registry: &str, api_key: Option<&str>, json: bool)
     } else {
         let text = std::fs::read_to_string(&path)?;
         let filename = path.file_name().unwrap().to_string_lossy().to_string();
-        for line in text.lines() {
-            let line = line.trim();
-            if !line.is_empty() && !line.starts_with('#') {
-                description = line.to_string();
-                break;
+        let all_lines: Vec<&str> = text.lines().collect();
+        if all_lines.len() >= 3 && all_lines[0].trim() == "---" {
+            description = all_lines[1..].iter().find_map(|l| {
+                let l = l.trim();
+                l.strip_prefix("purpose:").map(|v| v.trim().trim_matches('"').to_string())
+            }).unwrap_or_default();
+        }
+        if description.is_empty() {
+            for line in &all_lines {
+                let line = line.trim();
+                if !line.is_empty() && !line.starts_with('#') && line != "---" {
+                    description = line.to_string();
+                    break;
+                }
             }
         }
         files.insert(filename, text);
@@ -697,6 +718,7 @@ fn run_publish(path: PathBuf, registry: &str, api_key: Option<&str>, json: bool)
         "description": description,
         "tags": tags,
         "files": files,
+        "org": org,
     });
 
     let url = format!("{}/api/v1/publish", registry);

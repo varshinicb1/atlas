@@ -53,6 +53,7 @@ impl DecisionEngine {
                     t.trigger.tags.iter().any(|tag| {
                         q.contains(&tag.to_lowercase())
                             || context.tags.iter().any(|ct| ct == tag)
+                            || context.values.values().any(|v| v == tag)
                     })
                 };
                 tag_match

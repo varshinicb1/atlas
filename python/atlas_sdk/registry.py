@@ -66,7 +66,10 @@ class RegistryClient:
 
     def get_package(self, name: str) -> Optional[dict]:
         try:
-            return self._get(f"/api/v1/packages/{urllib.parse.quote(name)}")
+            data = self._get(f"/api/v1/packages/{urllib.parse.quote(name)}")
+            result = data.get("metadata", {})
+            result["files"] = data.get("files", {})
+            return result
         except urllib.error.HTTPError as e:
             if e.code == 404:
                 return None
