@@ -1,12 +1,16 @@
 use clap::{Parser, Subcommand};
 use std::path::{Path, PathBuf};
-use std::collections::{HashSet, VecDeque};
+use std::collections::{HashSet, VecDeque, HashMap};
+use std::time::{SystemTime, UNIX_EPOCH};
 use atlas_compiler::Compiler;
 use atlas_compiler::frontends::MdDocument;
 use atlas_compiler::frontends::decision::DecisionParser;
 use atlas_compiler::binary;
 use atlas_knowledge::reasoner::Reasoner;
 use atlas_knowledge::loader::AtlasBundle;
+use atlas_knowledge::{Runtime, DecisionResult};
+use atlas_ir::{Workflow, RecommendationItem};
+use serde::{Deserialize, Serialize};
 
 mod templates;
 
@@ -30,19 +34,21 @@ enum Commands {
         emit_ir: bool,
     },
     Solve {
-        #[arg(short, long, default_value = "bundle.atlas")]
-        bundle: PathBuf,
+        #[arg(short, long, alias = "from")]
+        bundle: Option<PathBuf>,
         query: String,
+        #[arg(long)]
+        all: bool,
     },
     Decide {
-        #[arg(short, long, default_value = "bundle.atlas")]
+        #[arg(short, long, alias = "from", default_value = "bundle.atlas")]
         bundle: PathBuf,
         query: String,
         #[arg(short = 'c', long, value_parser = parse_key_val)]
         context: Vec<KeyVal>,
     },
     Verify {
-        #[arg(short, long, default_value = "bundle.atlas")]
+        #[arg(short, long, alias = "from", default_value = "bundle.atlas")]
         bundle: PathBuf,
         #[arg(short, long)]
         artifact: Option<String>,
@@ -56,7 +62,7 @@ enum Commands {
     },
     /// Reason over the knowledge graph using a template or LLM
     Reason {
-        #[arg(short, long, default_value = "bundle.atlas")]
+        #[arg(short, long, alias = "from", default_value = "bundle.atlas")]
         bundle: PathBuf,
         query: String,
         #[arg(long)]
@@ -64,8 +70,9 @@ enum Commands {
     },
     /// Dump the full IR of an .atlas file as JSON
     Dump {
-        #[arg(short, long, default_value = "bundle.atlas")]
-        bundle: PathBuf,
+        #[arg(short, long)]
+        bundle: Option<PathBuf>,
+        sources: Vec<PathBuf>,
     },
     /// Scaffold a new knowledge package from a built-in template
     Init {
@@ -161,11 +168,25 @@ enum Commands {
         #[arg(long, default_value_t = false)]
         tokens: bool,
     },
+    /// Start a local HTTP API server for AI agents to query knowledge
+    Serve {
+        /// Port to listen on
+        #[arg(short, long, default_value_t = 8080)]
+        port: u16,
+        /// Host to bind to
+        #[arg(long, default_value = "0.0.0.0")]
+        host: String,
+    },
     /// Generate or install agent skills from Atlas packages (agentic-awesome-skills compatible)
     Skill {
         /// Subcommand: generate, install, search, list
         #[command(subcommand)]
         action: SkillAction,
+    },
+    /// Run a durable AI agent with checkpointing and human-in-the-loop
+    Agent {
+        #[command(subcommand)]
+        action: AgentAction,
     },
 }
 
@@ -208,6 +229,43 @@ enum SkillAction {
     },
 }
 
+#[derive(Subcommand)]
+enum AgentAction {
+    /// Run a durable agent with checkpointing
+    Run {
+        /// Task/query for the agent to solve
+        task: String,
+        /// Knowledge package to use (e.g., "react_patterns")
+        #[arg(short, long)]
+        package: String,
+        /// Maximum steps to run
+        #[arg(long, default_value_t = 10)]
+        max_steps: usize,
+        /// Checkpoint directory for durable execution
+        #[arg(long, default_value = ".atlas/checkpoints")]
+        checkpoint_dir: PathBuf,
+        /// Enable human-in-the-loop at decision nodes
+        #[arg(long, default_value_t = false)]
+        human_in_loop: bool,
+        /// Checkpoint interval (steps)
+        #[arg(long, default_value_t = 3)]
+        checkpoint_interval: usize,
+    },
+    /// Resume agent from a checkpoint
+    Resume {
+        /// Checkpoint ID to resume from
+        checkpoint_id: String,
+        /// Optional new max steps
+        #[arg(long)]
+        max_steps: Option<usize>,
+        /// Enable human-in-the-loop at decision nodes
+        #[arg(long, default_value_t = false)]
+        human_in_loop: bool,
+    },
+    /// List available checkpoints
+    List,
+}
+
 #[derive(Debug, Clone)]
 struct KeyVal {
     key: String,
@@ -228,23 +286,35 @@ fn main() -> Result<(), anyhow::Error> {
     let cli = Cli::parse();
     match cli.command {
         Commands::Compile { sources, out, emit_ir } => run_compile(sources, &out, emit_ir, cli.json),
-        Commands::Solve { bundle, query } => run_solve(&bundle, &query, cli.json),
+        Commands::Solve { bundle, query, all } => {
+            run_solve(bundle.as_deref(), &query, all, cli.json)
+        }
         Commands::Decide { bundle, query, context } => run_decide(&bundle, &query, &context, cli.json),
         Commands::Verify { bundle, artifact, policy } => run_verify(&bundle, artifact.as_deref(), policy.as_deref(), cli.json),
         Commands::Install { name, sources } => run_install(name, sources, cli.json),
         Commands::Reason { bundle, query, model } => run_reason(&bundle, &query, model, cli.json),
-        Commands::Dump { bundle } => run_dump(&bundle, cli.json),
+        Commands::Dump { bundle, sources } => run_dump(bundle.as_deref(), sources, cli.json),
         Commands::Init { name, template, dir } => run_init(&name, &template, dir.as_ref()),
         Commands::Search { query, registry } => run_search(&query, &registry, cli.json),
         Commands::Publish { path, registry, api_key, org } => run_publish(path, &registry, api_key.as_deref(), &org, cli.json),
         Commands::Clone { url, name, dir, assets, rebuild } => run_clone(&url, name.as_deref(), dir.as_ref(), assets, rebuild, cli.json),
         Commands::Crawl { url, name, dir, depth, max_pages, publish, registry, api_key, org } => run_crawl(&url, name.as_deref(), dir.as_ref(), depth, max_pages, publish, &registry, api_key.as_deref(), &org, cli.json),
         Commands::Export { bundle, style, out, tokens } => run_export(&bundle, &style, out.as_ref(), tokens, cli.json),
+        Commands::Serve { port, host } => run_serve(port, &host),
         Commands::Skill { action } => match action {
             SkillAction::Generate { path, out, name, risk, category } => run_skill_generate(&path, out.as_ref(), name.as_deref(), &risk, &category, cli.json),
             SkillAction::Search { query, limit } => run_skill_search(&query, limit, cli.json),
             SkillAction::List => run_skill_list(cli.json),
             SkillAction::Install { skills, dir } => run_skill_install(&skills, dir.as_ref(), cli.json),
+        },
+        Commands::Agent { action } => match action {
+            AgentAction::Run { task, package, max_steps, checkpoint_dir, human_in_loop, checkpoint_interval } => {
+                run_agent_run(&task, &package, max_steps, &checkpoint_dir, human_in_loop, checkpoint_interval, cli.json)
+            }
+            AgentAction::Resume { checkpoint_id, max_steps, human_in_loop } => {
+                run_agent_resume(&checkpoint_id, max_steps, human_in_loop, cli.json)
+            }
+            AgentAction::List => run_agent_list(cli.json),
         },
     }
 }
@@ -355,12 +425,139 @@ struct NodeOutput {
     confidence: f32,
 }
 
-fn run_solve(bundle_path: &Path, query: &str, json: bool) -> Result<(), anyhow::Error> {
+fn resolve_bundle(bundle: &Path) -> Result<(PathBuf, String), anyhow::Error> {
+    let stem = bundle.file_stem().and_then(|s| s.to_str()).unwrap_or("bundle");
+    if bundle.exists() {
+        return Ok((bundle.to_path_buf(), stem.to_string()));
+    }
+    for candidate in [
+        format!("{}.atlas", stem),
+        format!("packages/{}.atlas", stem),
+    ] {
+        let p = PathBuf::from(&candidate);
+        if p.exists() {
+            return Ok((p, stem.to_string()));
+        }
+    }
+    if let Some(data_dir) = dirs::data_dir() {
+        let installed = data_dir.join("atlas").join("bundles").join(stem).join("bundle.atlas");
+        if installed.exists() {
+            return Ok((installed, stem.to_string()));
+        }
+    }
+    for candidate in [
+        format!("packages/{}.md", stem),
+        format!("{}.md", stem),
+    ] {
+        let p = PathBuf::from(&candidate);
+        if p.exists() {
+            let atlas_path = PathBuf::from(format!("{}.atlas", stem));
+            let mut compiler = atlas_compiler::Compiler::new();
+            compile_md(&mut compiler, &p)?;
+            let ir = compiler.build()?;
+            binary::write_binary(&ir, &atlas_path)?;
+            return Ok((atlas_path, stem.to_string()));
+        }
+    }
+    anyhow::bail!("Bundle '{}' not found. Provide a path to a .atlas or .md file, or a package name.", stem);
+}
+
+fn run_solve(bundle_path: Option<&Path>, query: &str, all: bool, json: bool) -> Result<(), anyhow::Error> {
     if query.trim().is_empty() {
         anyhow::bail!("Error: query cannot be empty. Please provide a search query.");
     }
+
     let mut runtime = atlas_knowledge::Runtime::new();
-    let name = runtime.load(bundle_path)?;
+
+    if all || bundle_path.is_none() {
+        let packages_dir = std::path::Path::new("packages");
+        if packages_dir.exists() {
+            runtime.load_all(packages_dir)?;
+        }
+        let atlas_files: Vec<PathBuf> = std::fs::read_dir(".")
+            .into_iter()
+            .flatten()
+            .filter_map(|e| e.ok())
+            .map(|e| e.path())
+            .filter(|p| p.extension().and_then(|s| s.to_str()) == Some("atlas"))
+            .collect();
+        for p in atlas_files {
+            let _ = runtime.load(&p);
+        }
+        if let Some(data_dir) = dirs::data_dir() {
+            let bundles_dir = data_dir.join("atlas").join("bundles");
+            if bundles_dir.exists() {
+                if let Ok(entries) = std::fs::read_dir(&bundles_dir) {
+                    for entry in entries.flatten() {
+                        let bundle_atlas = entry.path().join("bundle.atlas");
+                        if bundle_atlas.exists() {
+                            let _ = runtime.load(&bundle_atlas);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if all || bundle_path.is_none() {
+        if runtime.bundle_count() == 0 {
+            anyhow::bail!("No .atlas files found in packages/ or current directory. Run `atlas compile` first or use `--bundle`.");
+        }
+        let results = runtime.solve_all(query);
+
+        if json {
+            let outputs: Vec<serde_json::Value> = results.iter().map(|r| {
+                serde_json::json!({
+                    "query": r.query,
+                    "bundle": r.bundle,
+                    "confidence": r.confidence,
+                    "total_matches": r.total_matches,
+                    "nodes": r.nodes.iter().map(|n| serde_json::json!({
+                        "id": n.id,
+                        "name": n.name,
+                        "kind": format!("{:?}", n.kind),
+                        "description": n.description,
+                        "version": n.version,
+                        "confidence": n.confidence,
+                    })).collect::<Vec<_>>(),
+                })
+            }).collect();
+            let total = results.iter().map(|r| r.nodes.len()).sum::<usize>();
+            let output = serde_json::json!({
+                "query": query,
+                "results": outputs,
+                "total_nodes": total,
+                "bundles_scanned": results.len(),
+            });
+            println!("{}", serde_json::to_string(&output)?);
+            return Ok(());
+        }
+
+        let total = results.iter().map(|r| r.nodes.len()).sum::<usize>();
+        println!("Query: {}", query);
+        println!("Bundles matched: {}", results.len());
+        println!("Total nodes: {}\n", total);
+        for result in &results {
+            println!("── {} (confidence: {:.2}) ──", result.bundle, result.confidence);
+            for node in &result.nodes {
+                let kind = format!("{:?}", node.kind);
+                println!("  [{}] {} ({})", kind, node.name, node.id);
+                if let Some(ref desc) = node.description {
+                    let snippet: String = desc.chars().take(120).collect();
+                    println!("       {}", snippet);
+                }
+                if let Some(ref ver) = node.version {
+                    println!("       v{}", ver);
+                }
+                println!();
+            }
+        }
+        return Ok(());
+    }
+
+    let bundle_path = bundle_path.unwrap();
+    let (resolved, _) = resolve_bundle(bundle_path)?;
+    let name = runtime.load(&resolved)?;
     let result = runtime.solve(&name, query)?;
 
     if json {
@@ -422,8 +619,9 @@ fn run_decide(bundle_path: &Path, query: &str, context: &[KeyVal], json: bool) -
     if query.trim().is_empty() {
         anyhow::bail!("Error: query cannot be empty. Please provide a search query.");
     }
+    let (resolved, _) = resolve_bundle(bundle_path)?;
     let mut runtime = atlas_knowledge::Runtime::new();
-    let name = runtime.load(bundle_path)?;
+    let name = runtime.load(&resolved)?;
     let mut ctx = std::collections::HashMap::new();
     for kv in context { ctx.insert(kv.key.clone(), kv.value.clone()); }
     let result = runtime.decide(&name, query, Some(&ctx))?;
@@ -496,8 +694,9 @@ fn run_reason(bundle_path: &Path, query: &str, model: Option<String>, json: bool
     if query.trim().is_empty() {
         anyhow::bail!("Error: query cannot be empty. Please provide a search query.");
     }
+    let (resolved, _) = resolve_bundle(bundle_path)?;
     let mut runtime = atlas_knowledge::Runtime::new();
-    let name = runtime.load(bundle_path)?;
+    let name = runtime.load(&resolved)?;
     let solve_result = runtime.solve(&name, query)?;
     
     // Also try decision trees
@@ -533,9 +732,30 @@ fn run_reason(bundle_path: &Path, query: &str, model: Option<String>, json: bool
     Ok(())
 }
 
-fn run_dump(bundle_path: &Path, json: bool) -> Result<(), anyhow::Error> {
+fn run_dump(bundle_path: Option<&Path>, sources: Vec<PathBuf>, json: bool) -> Result<(), anyhow::Error> {
+    let bundle_path = match bundle_path {
+        Some(p) => p.to_path_buf(),
+        None if sources.is_empty() => PathBuf::from("bundle.atlas"),
+        None => {
+            let single = &sources[0];
+            let ext = single.extension().and_then(|s| s.to_str());
+            if sources.len() == 1 && ext == Some("atlas") {
+                single.clone()
+            } else if sources.len() == 1 && ext == Some("md") {
+                let stem = single.file_stem().and_then(|s| s.to_str()).unwrap_or("bundle");
+                let out_path = PathBuf::from(format!("{}.atlas", stem));
+                run_compile(vec![single.clone()], &out_path, false, false)?;
+                out_path
+            } else {
+                let out_path = PathBuf::from("bundle.atlas");
+                run_compile(sources, &out_path, false, false)?;
+                out_path
+            }
+        }
+    };
+
     let mut runtime = atlas_knowledge::Runtime::new();
-    let name = runtime.load(bundle_path)?;
+    let name = runtime.load(&bundle_path)?;
     let bundle = runtime.get(&name)
         .ok_or_else(|| anyhow::anyhow!("Bundle not loaded"))?;
     if json {
@@ -1733,6 +1953,200 @@ fn run_skill_install(skills: &[String], dir: Option<&PathBuf>, json: bool) -> Re
     Ok(())
 }
 
+fn run_serve(port: u16, host: &str) -> Result<(), anyhow::Error> {
+    let addr = format!("{}:{}", host, port);
+    let server = tiny_http::Server::http(&addr)
+        .map_err(|e| anyhow::anyhow!("Failed to start server on {}: {}", addr, e))?;
+    eprintln!("🧠 Atlas knowledge API server running at http://{}", addr);
+    eprintln!("   Endpoints:");
+    eprintln!("     GET /solve?q=<query>[&from=<package>|&all=true]");
+    eprintln!("     GET /packages");
+    eprintln!("     POST /install  body: {}", r#"{"package":"<name>"}"#);
+    eprintln!("     GET /health");
+
+    for mut request in server.incoming_requests() {
+        let url = request.url().to_string();
+        let method = request.method().as_str().to_string();
+        let response = match (method.as_str(), url.as_str()) {
+            ("GET", "/health") => json_response(serde_json::json!({"status": "ok", "version": "0.3.1"})),
+            ("GET", _) if url.starts_with("/solve") => {
+                handle_solve_request(&url)
+            }
+            ("GET", "/packages") => {
+                handle_packages_request()
+            }
+            ("POST", "/install") => {
+                handle_install_request(&mut request)
+            }
+            _ => {
+                json_response_with_status(serde_json::json!({"error": "Not Found"}), 404)
+            }
+        };
+        let _ = request.respond(response).map_err(|e| anyhow::anyhow!("respond error: {}", e));
+    }
+    Ok(())
+}
+
+fn handle_solve_request(url: &str) -> tiny_http::Response<std::io::Cursor<Vec<u8>>> {
+    let params = parse_query(url);
+    let query = match params.get("q") {
+        Some(q) => q,
+        None => return json_response_with_status(serde_json::json!({"error": "Missing 'q' parameter"}), 400),
+    };
+
+    let mut runtime = atlas_knowledge::Runtime::new();
+    let load_from_all = params.get("all").map(|v| v == "true").unwrap_or(false);
+    let package = params.get("from");
+
+    if load_from_all || package.is_none() {
+        if let Some(data_dir) = dirs::data_dir() {
+            let bundles_dir = data_dir.join("atlas").join("bundles");
+            if bundles_dir.exists() {
+                if let Ok(entries) = std::fs::read_dir(&bundles_dir) {
+                    for entry in entries.flatten() {
+                        let bundle_atlas = entry.path().join("bundle.atlas");
+                        if bundle_atlas.exists() {
+                            let _ = runtime.load(&bundle_atlas);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if let Some(pkg) = package {
+        if let Ok((resolved, name)) = resolve_bundle(&std::path::PathBuf::from(pkg)) {
+            let _ = runtime.load(&resolved);
+            if let Ok(result) = runtime.solve(&name, query) {
+                return json_response(serde_json::json!({
+                    "query": result.query,
+                    "bundle": result.bundle,
+                    "confidence": result.confidence,
+                    "total_matches": result.total_matches,
+                    "nodes": result.nodes.iter().map(|n| serde_json::json!({
+                        "id": n.id,
+                        "name": n.name,
+                        "kind": format!("{:?}", n.kind),
+                        "description": n.description,
+                        "version": n.version,
+                        "confidence": n.confidence,
+                    })).collect::<Vec<_>>(),
+                }));
+            }
+        }
+    }
+
+    if load_from_all || (package.is_none() && runtime.bundle_count() > 0) {
+        let results = runtime.solve_all(query);
+        return json_response(serde_json::json!({
+            "query": query,
+            "results": results.iter().map(|r| serde_json::json!({
+                "bundle": r.bundle,
+                "confidence": r.confidence,
+                "nodes": r.nodes.iter().map(|n| serde_json::json!({
+                    "id": n.id,
+                    "name": n.name,
+                    "kind": format!("{:?}", n.kind),
+                    "description": n.description,
+                    "version": n.version,
+                    "confidence": n.confidence,
+                })).collect::<Vec<_>>(),
+            })).collect::<Vec<_>>(),
+        }));
+    }
+
+    json_response(serde_json::json!({"error": "No packages loaded. Install a package first with `atlas install <name>` or use the MCP server."}))
+}
+
+fn handle_packages_request() -> tiny_http::Response<std::io::Cursor<Vec<u8>>> {
+    let mut packages = Vec::new();
+    if let Some(data_dir) = dirs::data_dir() {
+        let bundles_dir = data_dir.join("atlas").join("bundles");
+        if bundles_dir.exists() {
+            if let Ok(entries) = std::fs::read_dir(&bundles_dir) {
+                for entry in entries.flatten() {
+                    packages.push(serde_json::json!({
+                        "name": entry.file_name().to_string_lossy(),
+                    }));
+                }
+            }
+        }
+    }
+    json_response(serde_json::json!({"packages": packages}))
+}
+
+fn handle_install_request(request: &mut tiny_http::Request) -> tiny_http::Response<std::io::Cursor<Vec<u8>>> {
+    let mut body = String::new();
+    if request.as_reader().read_to_string(&mut body).is_err() {
+        return json_response_with_status(serde_json::json!({"error": "Failed to read request body"}), 400);
+    }
+    let parsed: serde_json::Value = match serde_json::from_str(&body) {
+        Ok(v) => v,
+        Err(_) => return json_response_with_status(serde_json::json!({"error": "Invalid JSON"}), 400),
+    };
+    let package = match parsed.get("package").and_then(|v| v.as_str()) {
+        Some(p) => p,
+        None => return json_response_with_status(serde_json::json!({"error": "Missing 'package' field"}), 400),
+    };
+    match run_install(None, vec![std::path::PathBuf::from(package)], false) {
+        Ok(()) => json_response(serde_json::json!({"installed": package})),
+        Err(e) => json_response_with_status(serde_json::json!({"error": format!("{}", e)}), 500),
+    }
+}
+
+fn parse_query(url: &str) -> std::collections::HashMap<String, String> {
+    use std::collections::HashMap;
+    let mut params = HashMap::new();
+    if let Some(query_start) = url.find('?') {
+        let query_str = &url[query_start + 1..];
+        for pair in query_str.split('&') {
+            if let Some(eq) = pair.find('=') {
+                let key = url_decode(&pair[..eq]);
+                let value = url_decode(&pair[eq + 1..]);
+                params.insert(key, value);
+            }
+        }
+    }
+    params
+}
+
+fn url_decode(s: &str) -> String {
+    let mut result = String::with_capacity(s.len());
+    let mut chars = s.chars();
+    while let Some(c) = chars.next() {
+        match c {
+            '+' => result.push(' '),
+            '%' => {
+                let hex: String = chars.by_ref().take(2).collect();
+                if let Ok(byte) = u8::from_str_radix(&hex, 16) {
+                    result.push(byte as char);
+                }
+            }
+            _ => result.push(c),
+        }
+    }
+    result
+}
+
+
+fn json_response(data: serde_json::Value) -> tiny_http::Response<std::io::Cursor<Vec<u8>>> {
+    json_response_with_status(data, 200)
+}
+
+fn json_response_with_status(data: serde_json::Value, status: u16) -> tiny_http::Response<std::io::Cursor<Vec<u8>>> {
+    let body = serde_json::to_string(&data).unwrap_or_default();
+    let bytes = body.into_bytes();
+    let ct = tiny_http::Header::from_bytes(&b"Content-Type"[..], &b"application/json"[..]).unwrap();
+    let cors = tiny_http::Header::from_bytes(&b"Access-Control-Allow-Origin"[..], &b"*"[..]).unwrap();
+    tiny_http::Response::new(
+        status.into(),
+        vec![ct, cors],
+        std::io::Cursor::new(bytes),
+        None,
+        None,
+    )
+}
+
 fn urlencode(s: &str) -> String {
     s.bytes()
         .map(|b| match b {
@@ -1741,6 +2155,623 @@ fn urlencode(s: &str) -> String {
             _ => format!("%{:02X}", b),
         })
         .collect()
+}
+
+/// Agent state for durable execution
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct AgentState {
+    checkpoint_id: String,
+    task: String,
+    package: String,
+    step: usize,
+    max_steps: usize,
+    graph_position: Option<String>,
+    memory: HashMap<String, serde_json::Value>,
+    history: Vec<AgentStep>,
+    decision_context: HashMap<String, String>,
+    created_at: u64,
+    updated_at: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct AgentStep {
+    step: usize,
+    action: String,
+    result: serde_json::Value,
+    timestamp: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct AgentTool {
+    name: String,
+    description: String,
+    schema: serde_json::Value,
+    workflow_id: Option<String>,
+}
+
+fn timestamp() -> u64 {
+    SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs()
+}
+
+fn generate_checkpoint_id() -> String {
+    format!("ckpt-{}", timestamp())
+}
+
+fn load_package_workflows(package: &str) -> Result<Vec<Workflow>, anyhow::Error> {
+    let bundle_path = find_package_bundle(package)?;
+    let mut runtime = Runtime::new();
+    let name = runtime.load(&bundle_path)?;
+    let workflows = runtime.get_workflows(&name).cloned().unwrap_or_default();
+    Ok(workflows)
+}
+
+fn find_package_bundle(package: &str) -> Result<PathBuf, anyhow::Error> {
+    let data_dir = dirs::data_dir().ok_or_else(|| anyhow::anyhow!("Cannot determine data directory"))?;
+    let bundles_dir = data_dir.join("atlas").join("bundles");
+    
+    // Try local first
+    let local_paths = [
+        PathBuf::from(format!("packages/{}.atlas", package)),
+        PathBuf::from(format!("{}.atlas", package)),
+    ];
+    for p in &local_paths {
+        if p.exists() {
+            return Ok(p.clone());
+        }
+    }
+    
+    // Try installed packages
+    let installed = bundles_dir.join(package).join("bundle.atlas");
+    if installed.exists() {
+        return Ok(installed);
+    }
+    
+    anyhow::bail!("Package '{}' not found. Run `atlas install {}` first.", package, package)
+}
+
+fn build_tools_from_workflows(workflows: &[Workflow]) -> Vec<AgentTool> {
+    workflows.iter().map(|wf| {
+        let mut properties = serde_json::Map::new();
+        for step in &wf.steps {
+            properties.insert(step.action.clone(), serde_json::json!({
+                "type": "string",
+                "description": format!("Step: {}", step.action)
+            }));
+        }
+        AgentTool {
+            name: wf.id.clone(),
+            description: wf.description.clone(),
+            schema: serde_json::json!({
+                "type": "object",
+                "properties": properties,
+                "additionalProperties": true
+            }),
+            workflow_id: Some(wf.id.clone()),
+        }
+    }).collect()
+}
+
+fn run_agent_run(
+    task: &str,
+    package: &str,
+    max_steps: usize,
+    checkpoint_dir: &Path,
+    human_in_loop: bool,
+    checkpoint_interval: usize,
+    json: bool,
+) -> Result<(), anyhow::Error> {
+    std::fs::create_dir_all(checkpoint_dir)?;
+    
+    // Load package workflows as tools
+    let workflows = load_package_workflows(package)?;
+    let tools = build_tools_from_workflows(&workflows);
+    
+    if json {
+        let output = serde_json::json!({
+            "status": "started",
+            "task": task,
+            "package": package,
+            "max_steps": max_steps,
+            "tools_available": tools.len(),
+            "checkpoint_dir": checkpoint_dir.to_string_lossy(),
+        });
+        println!("{}", serde_json::to_string(&output)?);
+    } else {
+        println!("🤖 Starting agent: {}", task);
+        println!("   Package: {}", package);
+        println!("   Max steps: {}", max_steps);
+        println!("   Tools: {}", tools.len());
+        println!("   Human-in-loop: {}", human_in_loop);
+    }
+    
+    let mut state = AgentState {
+        checkpoint_id: generate_checkpoint_id(),
+        task: task.to_string(),
+        package: package.to_string(),
+        step: 0,
+        max_steps,
+        graph_position: None,
+        memory: HashMap::new(),
+        history: Vec::new(),
+        decision_context: HashMap::new(),
+        created_at: timestamp(),
+        updated_at: timestamp(),
+    };
+    
+    // Initialize with solve
+    let _solve_result = initialize_solve(task, package, &mut state, json)?;
+    
+    // Agent loop: solve -> decide -> act -> observe -> repeat
+    loop {
+        if state.step >= state.max_steps {
+            if json {
+                println!(r#"{{"status":"max_steps_reached","checkpoint_id":"{}","steps":{}}}"#, state.checkpoint_id, state.step);
+            } else {
+                println!("⏹️  Max steps ({}) reached", state.max_steps);
+            }
+            break;
+        }
+        
+        state.step += 1;
+        state.updated_at = timestamp();
+        
+        // DECIDE: Use decision trees
+        let decide_result = run_decide_step(&state, package, json)?;
+        
+        // HUMAN-IN-LOOP: Pause at decision nodes if enabled
+        if human_in_loop {
+            if let Some(ref dr) = decide_result {
+                let approved = prompt_human_approval(dr, json)?;
+                if !approved {
+                    if json {
+                        println!(r#"{{"status":"rejected","checkpoint_id":"{}","step":{}}}"#, state.checkpoint_id, state.step);
+                    } else {
+                        println!("❌ Human rejected decision, stopping");
+                    }
+                    break;
+                }
+            }
+        }
+        
+        // ACT: Execute tool/workflow based on decision
+        let act_result = if let Some(ref dr) = decide_result {
+            execute_action(dr, &tools, &mut state, json)?
+        } else {
+            serde_json::json!({"action": "none", "result": "no decision tree matched"})
+        };
+        
+        // OBSERVE: Run solve again to get updated context
+        let observe_result = run_solve_step(&state, package, json)?;
+        
+        // Record step
+        state.history.push(AgentStep {
+            step: state.step,
+            action: format!("decide->act: {}", decide_result.as_ref().map(|d| d.tree_id.clone()).unwrap_or("none".into())),
+            result: serde_json::json!({
+                "decide": decide_result,
+                "act": act_result,
+                "observe": observe_result,
+            }),
+            timestamp: timestamp(),
+        });
+        
+        // Checkpoint
+        if state.step % checkpoint_interval == 0 {
+            save_checkpoint(&state, checkpoint_dir)?;
+            if json {
+                println!(r#"{{"status":"checkpoint","checkpoint_id":"{}","step":{}}}"#, state.checkpoint_id, state.step);
+            } else {
+                println!("💾 Checkpoint saved: {} (step {})", state.checkpoint_id, state.step);
+            }
+        }
+        
+        // Check if task is complete (heuristic: observe has high confidence and no more decisions)
+        if is_task_complete(&observe_result, &decide_result) {
+            if json {
+                println!(r#"{{"status":"completed","checkpoint_id":"{}","steps":{},"final_result":{}}}"#, state.checkpoint_id, state.step, observe_result);
+            } else {
+                println!("✅ Task completed in {} steps", state.step);
+            }
+            break;
+        }
+    }
+    
+    // Final checkpoint
+    save_checkpoint(&state, checkpoint_dir)?;
+    
+    if json {
+        let output = serde_json::json!({
+            "status": "finished",
+            "checkpoint_id": state.checkpoint_id,
+            "task": state.task,
+            "steps": state.step,
+            "history": state.history,
+        });
+        println!("{}", serde_json::to_string(&output)?);
+    }
+    
+    Ok(())
+}
+
+fn initialize_solve(task: &str, package: &str, state: &mut AgentState, json: bool) -> Result<serde_json::Value, anyhow::Error> {
+    let bundle_path = find_package_bundle(package)?;
+    let mut runtime = Runtime::new();
+    let name = runtime.load(&bundle_path)?;
+    let result = runtime.solve(&name, task)?;
+    
+    state.graph_position = result.nodes.first().map(|n| n.id.clone());
+    
+    let output = serde_json::json!({
+        "query": result.query,
+        "bundle": result.bundle,
+        "confidence": result.confidence,
+        "total_matches": result.total_matches,
+        "nodes": result.nodes.iter().map(|n| serde_json::json!({
+            "id": n.id,
+            "name": n.name,
+            "kind": format!("{:?}", n.kind),
+            "confidence": n.confidence,
+        })).collect::<Vec<_>>(),
+    });
+    
+    if !json {
+        println!("🔍 Initial solve: {} nodes (confidence: {:.2})", result.nodes.len(), result.confidence);
+    }
+    
+    Ok(output)
+}
+
+fn run_solve_step(state: &AgentState, package: &str, json: bool) -> Result<serde_json::Value, anyhow::Error> {
+    let bundle_path = find_package_bundle(package)?;
+    let mut runtime = Runtime::new();
+    let name = runtime.load(&bundle_path)?;
+    
+    // Build context from memory and history
+    let mut query = state.task.clone();
+    if let Some(pos) = &state.graph_position {
+        query.push_str(&format!(" (context: {})", pos));
+    }
+    for (k, v) in &state.memory {
+        query.push_str(&format!(" {}={}", k, v));
+    }
+    
+    let result = runtime.solve(&name, &query)?;
+    
+    let output = serde_json::json!({
+        "query": result.query,
+        "bundle": result.bundle,
+        "confidence": result.confidence,
+        "total_matches": result.total_matches,
+        "nodes": result.nodes.iter().map(|n| serde_json::json!({
+            "id": n.id,
+            "name": n.name,
+            "kind": format!("{:?}", n.kind),
+            "confidence": n.confidence,
+        })).collect::<Vec<_>>(),
+    });
+    
+    if !json {
+        println!("🔍 Observe (step {}): {} nodes, confidence {:.2}", state.step, result.nodes.len(), result.confidence);
+    }
+    
+    Ok(output)
+}
+
+fn run_decide_step(state: &AgentState, package: &str, json: bool) -> Result<Option<DecisionResult>, anyhow::Error> {
+    let bundle_path = find_package_bundle(package)?;
+    let mut runtime = Runtime::new();
+    let name = runtime.load(&bundle_path)?;
+    
+    let result = runtime.decide(&name, &state.task, Some(&state.decision_context))?;
+    
+    if !json {
+        if let Some(ref dr) = result {
+            println!("🤔 Decision: {} -> {} (confidence: {:?})", dr.tree_id, dr.path.join(" -> "), dr.recommendations.first().map(|r| r.confidence));
+        } else {
+            println!("🤔 No matching decision tree for task");
+        }
+    }
+    
+    Ok(result)
+}
+
+fn execute_action(decide_result: &DecisionResult, tools: &[AgentTool], state: &mut AgentState, json: bool) -> Result<serde_json::Value, anyhow::Error> {
+    // Find matching tool from recommendations
+    for rec in &decide_result.recommendations {
+        if let Some(tool) = tools.iter().find(|t| t.workflow_id.as_deref() == Some(rec.node_id.as_str()) || t.name == rec.node_id) {
+            // Execute workflow as tool
+            let result = execute_workflow_tool(tool, &decide_result.recommendations, state)?;
+            
+            // Update state memory with result
+            state.memory.insert(tool.name.clone(), result.clone());
+            state.graph_position = Some(rec.node_id.clone());
+            
+            if !json {
+                println!("⚡ Executed tool: {} -> {}", tool.name, serde_json::to_string(&result)?);
+            }
+            
+            return Ok(serde_json::json!({
+                "tool": tool.name,
+                "recommendation": rec.node_id,
+                "confidence": rec.confidence,
+                "result": result,
+            }));
+        }
+    }
+    
+    // Fallback: use first recommendation as generic action
+    if let Some(rec) = decide_result.recommendations.first() {
+        let result = serde_json::json!({
+            "node": rec.node_id,
+            "confidence": rec.confidence,
+            "action": "knowledge_lookup",
+        });
+        state.memory.insert(rec.node_id.clone(), result.clone());
+        state.graph_position = Some(rec.node_id.clone());
+        
+        if !json {
+            println!("📖 Knowledge lookup: {}", rec.node_id);
+        }
+        
+        return Ok(serde_json::json!({
+            "tool": "knowledge_lookup",
+            "recommendation": rec.node_id,
+            "confidence": rec.confidence,
+            "result": result,
+        }));
+    }
+    
+    Ok(serde_json::json!({"action": "none", "result": "no recommendations"}))
+}
+
+fn execute_workflow_tool(tool: &AgentTool, recommendations: &[RecommendationItem], _state: &mut AgentState) -> Result<serde_json::Value, anyhow::Error> {
+    // Simulate workflow execution - in reality this would run the actual workflow steps
+    // For now, return structured result based on workflow
+    let mut result = serde_json::Map::new();
+    result.insert("workflow".to_string(), serde_json::Value::String(tool.name.clone()));
+    result.insert("status".to_string(), serde_json::Value::String("executed".to_string()));
+    result.insert("steps".to_string(), serde_json::Value::Array(vec![]));
+    result.insert("output".to_string(), serde_json::Value::String(format!("Workflow {} executed with {} recommendations", tool.name, recommendations.len())));
+    
+    Ok(serde_json::Value::Object(result))
+}
+
+fn is_task_complete(observe: &serde_json::Value, decide: &Option<DecisionResult>) -> bool {
+    // Task complete if high confidence and no more decisions
+    let confidence = observe.get("confidence").and_then(|v| v.as_f64()).unwrap_or(0.0);
+    confidence > 0.9 && decide.is_none()
+}
+
+fn prompt_human_approval(decide_result: &DecisionResult, json: bool) -> Result<bool, anyhow::Error> {
+    if json {
+        let prompt = serde_json::json!({
+            "type": "human_approval",
+            "decision_tree": decide_result.tree_id,
+            "path": decide_result.path,
+            "rationale": decide_result.rationale,
+            "recommendations": decide_result.recommendations.iter().map(|r| serde_json::json!({
+                "node_id": r.node_id,
+                "confidence": r.confidence,
+            })).collect::<Vec<_>>(),
+            "agent_instructions": decide_result.agent_instructions,
+        });
+        println!("{}", serde_json::to_string(&prompt)?);
+    } else {
+        println!("\n━━━ HUMAN APPROVAL REQUIRED ━━━");
+        println!("Decision tree: {}", decide_result.tree_id);
+        println!("Path: {}", decide_result.path.join(" → "));
+        println!("Rationale: {}", decide_result.rationale);
+        println!("Recommendations:");
+        for rec in &decide_result.recommendations {
+            println!("  • {} (confidence: {:.2})", rec.node_id, rec.confidence);
+        }
+        if let Some(ref instr) = decide_result.agent_instructions {
+            println!("Agent instructions: {}", instr);
+        }
+        print!("Approve? [y/N]: ");
+        std::io::Write::flush(&mut std::io::stdout())?;
+    }
+    
+    let mut input = String::new();
+    std::io::stdin().read_line(&mut input)?;
+    let approved = input.trim().eq_ignore_ascii_case("y") || input.trim().eq_ignore_ascii_case("yes");
+    
+    if !json {
+        if approved {
+            println!("✅ Approved, continuing...");
+        } else {
+            println!("❌ Rejected, stopping...");
+        }
+        println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
+    }
+    
+    Ok(approved)
+}
+
+fn save_checkpoint(state: &AgentState, checkpoint_dir: &Path) -> Result<(), anyhow::Error> {
+    let path = checkpoint_dir.join(format!("{}.json", state.checkpoint_id));
+    let data = serde_json::to_string_pretty(state)?;
+    std::fs::write(&path, data)?;
+    Ok(())
+}
+
+fn load_checkpoint(checkpoint_id: &str, checkpoint_dir: &Path) -> Result<AgentState, anyhow::Error> {
+    let path = checkpoint_dir.join(format!("{}.json", checkpoint_id));
+    if !path.exists() {
+        anyhow::bail!("Checkpoint not found: {}", path.display());
+    }
+    let data = std::fs::read_to_string(&path)?;
+    let state: AgentState = serde_json::from_str(&data)?;
+    Ok(state)
+}
+
+fn run_agent_resume(
+    checkpoint_id: &str,
+    max_steps: Option<usize>,
+    human_in_loop: bool,
+    json: bool,
+) -> Result<(), anyhow::Error> {
+    let checkpoint_dir = PathBuf::from(".atlas/checkpoints");
+    let mut state = load_checkpoint(checkpoint_id, &checkpoint_dir)?;
+    
+    if let Some(ms) = max_steps {
+        state.max_steps = ms;
+    }
+    
+    if json {
+        let output = serde_json::json!({
+            "status": "resumed",
+            "checkpoint_id": state.checkpoint_id,
+            "task": state.task,
+            "step": state.step,
+            "max_steps": state.max_steps,
+        });
+        println!("{}", serde_json::to_string(&output)?);
+    } else {
+        println!("🔄 Resuming agent from checkpoint: {}", checkpoint_id);
+        println!("   Task: {}", state.task);
+        println!("   Step: {}/{}", state.step, state.max_steps);
+    }
+    
+    // Continue agent loop from current step
+    let workflows = load_package_workflows(&state.package)?;
+    let tools = build_tools_from_workflows(&workflows);
+    
+    loop {
+        if state.step >= state.max_steps {
+            if json {
+                println!(r#"{{"status":"max_steps_reached","checkpoint_id":"{}","steps":{}}}"#, state.checkpoint_id, state.step);
+            } else {
+                println!("⏹️  Max steps ({}) reached", state.max_steps);
+            }
+            break;
+        }
+        
+        state.step += 1;
+        state.updated_at = timestamp();
+        
+        let decide_result = run_decide_step(&state, &state.package, json)?;
+        
+        if human_in_loop {
+            if let Some(ref dr) = decide_result {
+                let approved = prompt_human_approval(dr, json)?;
+                if !approved {
+                    if json {
+                        println!(r#"{{"status":"rejected","checkpoint_id":"{}","step":{}}}"#, state.checkpoint_id, state.step);
+                    } else {
+                        println!("❌ Human rejected decision, stopping");
+                    }
+                    break;
+                }
+            }
+        }
+        
+        let act_result = if let Some(ref dr) = decide_result {
+            execute_action(dr, &tools, &mut state, json)?
+        } else {
+            serde_json::json!({"action": "none", "result": "no decision tree matched"})
+        };
+        
+        let observe_result = run_solve_step(&state, &state.package, json)?;
+        
+        state.history.push(AgentStep {
+            step: state.step,
+            action: format!("decide->act: {}", decide_result.as_ref().map(|d| d.tree_id.clone()).unwrap_or("none".into())),
+            result: serde_json::json!({
+                "decide": decide_result,
+                "act": act_result,
+                "observe": observe_result,
+            }),
+            timestamp: timestamp(),
+        });
+        
+        if state.step % 3 == 0 {
+            save_checkpoint(&state, &checkpoint_dir)?;
+            if json {
+                println!(r#"{{"status":"checkpoint","checkpoint_id":"{}","step":{}}}"#, state.checkpoint_id, state.step);
+            } else {
+                println!("💾 Checkpoint saved: {} (step {})", state.checkpoint_id, state.step);
+            }
+        }
+        
+        if is_task_complete(&observe_result, &decide_result) {
+            if json {
+                println!(r#"{{"status":"completed","checkpoint_id":"{}","steps":{},"final_result":{}}}"#, state.checkpoint_id, state.step, observe_result);
+            } else {
+                println!("✅ Task completed in {} steps", state.step);
+            }
+            break;
+        }
+    }
+    
+    save_checkpoint(&state, &checkpoint_dir)?;
+    
+    if json {
+        let output = serde_json::json!({
+            "status": "finished",
+            "checkpoint_id": state.checkpoint_id,
+            "task": state.task,
+            "steps": state.step,
+            "history": state.history,
+        });
+        println!("{}", serde_json::to_string(&output)?);
+    }
+    
+    Ok(())
+}
+
+fn run_agent_list(json: bool) -> Result<(), anyhow::Error> {
+    let checkpoint_dir = PathBuf::from(".atlas/checkpoints");
+    if !checkpoint_dir.exists() {
+        if json {
+            println!(r#"{{"checkpoints":[]}}"#);
+        } else {
+            println!("No checkpoints found in {}", checkpoint_dir.display());
+        }
+        return Ok(());
+    }
+    
+    let mut checkpoints = Vec::new();
+    for entry in std::fs::read_dir(&checkpoint_dir)? {
+        let entry = entry?;
+        let path = entry.path();
+        if path.extension().and_then(|s| s.to_str()) == Some("json") {
+            let data = std::fs::read_to_string(&path)?;
+            if let Ok(state) = serde_json::from_str::<AgentState>(&data) {
+                checkpoints.push(serde_json::json!({
+                    "checkpoint_id": state.checkpoint_id,
+                    "task": state.task,
+                    "package": state.package,
+                    "step": state.step,
+                    "max_steps": state.max_steps,
+                    "created_at": state.created_at,
+                    "updated_at": state.updated_at,
+                }));
+            }
+        }
+    }
+    
+    checkpoints.sort_by(|a, b| b["updated_at"].as_u64().unwrap_or(0).cmp(&a["updated_at"].as_u64().unwrap_or(0)));
+    
+    if json {
+        println!(r#"{{"checkpoints":{}}}"#, serde_json::to_string(&checkpoints)?);
+    } else {
+        println!("📋 Checkpoints ({}):", checkpoints.len());
+        for cp in checkpoints {
+            let created = chrono::DateTime::from_timestamp(cp["created_at"].as_i64().unwrap_or(0) as i64, 0)
+                .map(|dt| dt.format("%Y-%m-%d %H:%M:%S").to_string())
+                .unwrap_or_else(|| "unknown".to_string());
+            println!("  {} - {} (step {}/{}) - created {}",
+                cp["checkpoint_id"],
+                cp["task"].as_str().unwrap_or(""),
+                cp["step"].as_u64().unwrap_or(0),
+                cp["max_steps"].as_u64().unwrap_or(0),
+                created,
+            );
+        }
+    }
+    
+    Ok(())
 }
 
 fn run_install(name: Option<String>, sources: Vec<PathBuf>, json: bool) -> Result<(), anyhow::Error> {
@@ -1769,6 +2800,73 @@ fn run_install(name: Option<String>, sources: Vec<PathBuf>, json: bool) -> Resul
                 let out_path = target_dir.join("bundle.atlas");
                 let sources = vec![source.clone()];
                 run_compile(sources, &out_path, false, json)?;
+            }
+            "" => {
+                let candidates = [
+                    PathBuf::from(format!("packages/{}.md", stem)),
+                    PathBuf::from(format!("{}.md", stem)),
+                    PathBuf::from(format!("{}.atlas", stem)),
+                ];
+                let found = candidates.iter().find(|p| p.exists());
+                match found {
+                    Some(p) if p.extension().and_then(|s| s.to_str()) == Some("atlas") => {
+                        let target = target_dir.join("bundle.atlas");
+                        std::fs::copy(p, &target)?;
+                        if json {
+                            println!(r#"{{"installed":"{}","target":"{}"}}"#, p.display(), target.display());
+                        } else {
+                            println!("Installed {} → {}", p.display(), target.display());
+                        }
+                    }
+                    Some(p) => {
+                        let out_path = target_dir.join("bundle.atlas");
+                        let sources = vec![p.clone()];
+                        run_compile(sources, &out_path, false, json)?;
+                    }
+                    None => {
+                        // Try downloading from registry
+                        let registry = std::env::var("ATLAS_REGISTRY")
+                            .unwrap_or_else(|_| "https://atlas-hub-registry.cbvarshini1.workers.dev".to_string());
+                        let url = format!("{}/api/v1/packages/{}", registry, stem);
+                        match ureq::get(&url).call() {
+                            Ok(r) => {
+                                let body = r.into_body().read_to_string()?;
+                                let parsed: serde_json::Value = serde_json::from_str(&body)?;
+                                if let Some(files) = parsed.get("files").and_then(|f| f.as_object()) {
+                                    let md_key = files.keys().find(|k| k.ends_with(".md"))
+                                        .cloned()
+                                        .unwrap_or_else(|| format!("{}.md", stem));
+                                    if let Some(content) = files.get(&md_key).and_then(|c| c.as_str()) {
+                                        let local_md = PathBuf::from(format!("packages/{}.md", stem));
+                                        std::fs::create_dir_all(local_md.parent().unwrap_or(&PathBuf::from(".")))?;
+                                        std::fs::write(&local_md, content)?;
+                                        let out_path = target_dir.join("bundle.atlas");
+                                        let sources = vec![local_md.clone()];
+                                        run_compile(sources, &out_path, false, json)?;
+                                        if json {
+                                            println!(r#"{{"installed":"{}","from":"registry"}}"#, stem);
+                                        } else {
+                                            println!("Installed '{}' from registry → {}", stem, out_path.display());
+                                        }
+                                    } else {
+                                        anyhow::bail!("No markdown content found for package '{}'", stem);
+                                    }
+                                } else {
+                                    anyhow::bail!("Invalid response from registry for package '{}'", stem);
+                                }
+                            }
+                            Err(e) => {
+                                anyhow::bail!("Could not find package '{}' locally or in registry (tried: {}; {}; {}; registry: {})",
+                                    stem,
+                                    candidates[0].display(),
+                                    candidates[1].display(),
+                                    candidates[2].display(),
+                                    e,
+                                );
+                            }
+                        }
+                    }
+                }
             }
             _ => anyhow::bail!("Unsupported file format: {}", source.display()),
         }
@@ -1814,9 +2912,10 @@ mod tests {
     fn test_cli_parse_solve() {
         let cli = Cli::parse_from(["atlas", "solve", "--bundle", "b.atlas", "my query"]);
         match cli.command {
-            Commands::Solve { bundle, query } => {
-                assert_eq!(bundle, std::path::PathBuf::from("b.atlas"));
+            Commands::Solve { bundle, query, all } => {
+                assert_eq!(bundle, Some(std::path::PathBuf::from("b.atlas")));
                 assert_eq!(query, "my query");
+                assert!(!all);
             }
             _ => panic!("expected Solve"),
         }

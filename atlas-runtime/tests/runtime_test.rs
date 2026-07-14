@@ -119,7 +119,7 @@ nodes:
     fn test_runtime_solve_match() {
         let (rt, name, path) = make_bundle();
         let res = rt.solve(&name, "Widget").unwrap();
-        assert_eq!(res.total_matches, 1);
+        assert_eq!(res.total_matches, 2);
         assert!(res.confidence > 0.9);
         assert!(res.nodes.iter().any(|n| n.id == "concept:widget"));
         let _ = std::fs::remove_file(&path);

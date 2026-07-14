@@ -104,6 +104,10 @@ impl EngineeringIR {
 
     pub fn search(&self, query: &str) -> Vec<&Node> {
         let q = query.to_lowercase();
+        let words: Vec<&str> = q.split_whitespace()
+            .flat_map(|w| w.split('_'))
+            .filter(|w| w.len() > 1)
+            .collect();
         let mut matched_ids = std::collections::HashSet::new();
         let mut results = Vec::new();
 
@@ -118,9 +122,16 @@ impl EngineeringIR {
         }
 
         for node in &self.nodes {
-            if (node.name.to_lowercase().contains(&q) || node.id.to_lowercase().contains(&q))
-                && matched_ids.insert(node.id.as_str())
-            {
+            let n_lower = node.name.to_lowercase();
+            let id_lower = node.id.to_lowercase();
+            let d_lower = node.description.as_deref().map(|d| d.to_lowercase()).unwrap_or_default();
+
+            let name_id_match = n_lower.contains(&q) || id_lower.contains(&q) || d_lower.contains(&q);
+            let word_match = !words.is_empty() && words.iter().all(|w| {
+                n_lower.contains(w) || id_lower.contains(w) || d_lower.contains(w)
+            });
+
+            if (name_id_match || word_match) && matched_ids.insert(node.id.as_str()) {
                 results.push(node);
             }
         }
@@ -241,6 +252,7 @@ pub enum NodeStatus {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Edge {
+    #[serde(default = "Edge::new_id")]
     pub id: String,
     pub src: String,
     pub dst: String,
@@ -368,8 +380,13 @@ pub struct VerificationRule {
 pub struct Indices {
     pub symbol_index: std::collections::HashMap<String, String>,
     pub type_index: std::collections::HashMap<String, Vec<String>>,
+    #[serde(default)]
     pub workflow_index: std::collections::HashMap<String, String>,
     pub embeddings: Vec<crate::embedding::Embedding>,
+    #[serde(default)]
+    pub embedding_vocab: Vec<String>,
+    #[serde(default)]
+    pub embedding_idf: Vec<f32>,
 }
 
 impl Indices {
@@ -392,7 +409,7 @@ impl Indices {
                 format!("{} {} {}", n.name, desc, n.category.as_deref().unwrap_or(""))
             })
             .collect();
-        let embeddings = crate::embedding::compute(&texts, crate::embedding::EMBEDDING_DIM);
+        let (embeddings, embedding_vocab, embedding_idf) = crate::embedding::compute_tfidf(&texts);
 
         let mut wf_index = std::collections::HashMap::new();
         for wf in &ir.workflows {
@@ -404,6 +421,8 @@ impl Indices {
             type_index: types,
             workflow_index: wf_index,
             embeddings,
+            embedding_vocab,
+            embedding_idf,
         }
     }
 }

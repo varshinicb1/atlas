@@ -51,6 +51,14 @@ impl Runtime {
         Ok(count)
     }
 
+    pub fn bundle_count(&self) -> usize {
+        self.bundles.len()
+    }
+
+    pub fn bundle_names(&self) -> Vec<&str> {
+        self.bundles.keys().map(|s| s.as_str()).collect()
+    }
+
     pub fn get(&self, name: &str) -> Option<&AtlasBundle> {
         self.bundles.get(name)
     }
@@ -62,7 +70,7 @@ impl Runtime {
     pub fn solve<'a>(&'a self, bundle_name: &str, query: &str) -> Result<SolveResult<'a>, anyhow::Error> {
         let bundle = self.bundles.get(bundle_name)
             .ok_or_else(|| anyhow::anyhow!("Bundle '{}' not loaded", bundle_name))?;
-        let q = query.to_lowercase().replace([' ', '-'], "_");
+        let q = query.to_lowercase();
 
         log::debug!("Solving query '{}' against bundle '{}'", query, bundle_name);
 
@@ -105,9 +113,14 @@ impl Runtime {
         };
 
         let has_subgraph_only = nodes.len() > direct.len() && !has_exact_symbol && !has_embedding;
+        let has_desc_match = !direct.is_empty() && direct.iter().any(|n| {
+            n.description.as_deref().map(|d| d.to_lowercase().contains(&q)).unwrap_or(false)
+        });
 
         let confidence = if has_exact_symbol {
             0.95
+        } else if has_desc_match {
+            0.85
         } else if has_embedding {
             0.7
         } else if has_subgraph_only {
@@ -136,11 +149,13 @@ impl Runtime {
         if indices.embeddings.is_empty() {
             return Vec::new();
         }
-        let query_emb = atlas_ir::embedding::compute(
-            &[query.to_string()],
-            atlas_ir::embedding::EMBEDDING_DIM,
-        );
-        atlas_ir::embedding::nearest(&indices.embeddings, &query_emb[0], top_k)
+        let query_emb = if !indices.embedding_vocab.is_empty() && !indices.embedding_idf.is_empty() {
+            atlas_ir::embedding::query_tfidf(query, &indices.embedding_vocab, &indices.embedding_idf)
+        } else {
+            // Fallback to legacy hash-based embedding for old .atlas files
+            atlas_ir::embedding::compute_hash(&[query.to_string()])[0].clone()
+        };
+        atlas_ir::embedding::nearest(&indices.embeddings, &query_emb, top_k)
     }
 
     pub fn decide(&self, bundle_name: &str, query: &str, context: Option<&HashMap<String, String>>) -> Result<Option<DecisionResult>, anyhow::Error> {
@@ -169,6 +184,19 @@ impl Runtime {
         log::info!("Running verification on bundle '{}'", bundle_name);
         let verifier = verify::Verifier::new(&bundle.ir);
         Ok(verifier.verify(artifact))
+    }
+
+    pub fn solve_all<'a>(&'a self, query: &str) -> Vec<SolveResult<'a>> {
+        let mut results: Vec<SolveResult<'a>> = self.bundles.keys()
+            .filter_map(|name| self.solve(name, query).ok())
+            .filter(|r| !r.nodes.is_empty())
+            .collect();
+        results.sort_by(|a, b| {
+            b.confidence
+                .partial_cmp(&a.confidence)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+        results
     }
 
     pub fn verify_with_policy(&self, bundle_name: &str, policy: &str) -> Result<verify::VerificationReport, anyhow::Error> {

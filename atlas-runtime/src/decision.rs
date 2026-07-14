@@ -1,7 +1,8 @@
 use atlas_ir::{DecisionTree, DecisionNode};
 use std::collections::HashMap;
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DecisionContext {
     pub values: HashMap<String, String>,
     pub query: String,
@@ -27,7 +28,7 @@ impl DecisionContext {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DecisionResult {
     pub tree_id: String,
     pub recommendations: Vec<atlas_ir::RecommendationItem>,
