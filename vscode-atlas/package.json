@@ -30,7 +30,7 @@
   "devDependencies": {
     "@types/node": "^20",
     "@types/vscode": "^1.96.0",
-    "typescript": "^5"
+    "typescript": "^7"
   },
   "contributes": {
     "commands": [
